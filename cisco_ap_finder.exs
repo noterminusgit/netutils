@@ -282,27 +282,59 @@ defmodule CiscoAPFinder do
   end
 
   defp display_results(aps) do
+    output_file = "aps.csv"
+
     IO.puts("\n" <> String.duplicate("=", 80))
     IO.puts("RESULTS: Found #{length(aps)} Cisco AP(s) total")
     IO.puts(String.duplicate("=", 80) <> "\n")
 
     if Enum.empty?(aps) do
       IO.puts("No Cisco APs found.")
+      IO.puts("No output file created.")
     else
-      # Group by switch
+      # Write to CSV file
+      write_csv_file(output_file, aps)
+      IO.puts("Results written to: #{output_file}")
+      IO.puts("\nSummary by switch:")
+
+      # Display summary in terminal
       aps_by_switch = Enum.group_by(aps, & &1.switch)
-
       Enum.each(aps_by_switch, fn {switch, switch_aps} ->
-        IO.puts("Switch: #{switch}")
-        IO.puts(String.duplicate("-", 80))
-
-        Enum.each(switch_aps, fn ap ->
-          IO.puts("  Interface: #{ap.interface}")
-          IO.puts("  Hostname:  #{ap.hostname}")
-          IO.puts("  MAC:       #{ap.mac_address}")
-          IO.puts("")
-        end)
+        IO.puts("  #{switch}: #{length(switch_aps)} AP(s)")
       end)
+    end
+  end
+
+  defp write_csv_file(filename, aps) do
+    # Create CSV content
+    csv_lines = [
+      # Header
+      "Switch,Interface,Hostname,MAC Address"
+      |
+      # Data rows
+      Enum.map(aps, fn ap ->
+        [ap.switch, ap.interface, ap.hostname, ap.mac_address]
+        |> Enum.map(&escape_csv_field/1)
+        |> Enum.join(",")
+      end)
+    ]
+
+    content = Enum.join(csv_lines, "\n") <> "\n"
+
+    case File.write(filename, content) do
+      :ok ->
+        :ok
+      {:error, reason} ->
+        IO.puts("Error writing to #{filename}: #{reason}")
+    end
+  end
+
+  defp escape_csv_field(field) do
+    # Escape fields that contain commas, quotes, or newlines
+    if String.contains?(field, [",", "\"", "\n"]) do
+      "\"#{String.replace(field, "\"", "\"\"")}\""
+    else
+      field
     end
   end
 end
