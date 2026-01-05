@@ -7,13 +7,16 @@ A script to discover Cisco Access Points connected to Cisco switches via Power o
 
 ### Description
 
-`cisco_ap_finder.exs` connects to a list of Cisco switches via SSH, runs the `show power inline` command to identify powered devices, and then uses CDP (Cisco Discovery Protocol) to retrieve detailed information about Cisco APs including their hostnames and MAC addresses.
+`cisco_ap_finder.exs` connects to a list of Cisco switches via SSH, runs the `show power inline` command to identify powered devices on local ports, and then uses CDP (Cisco Discovery Protocol) to retrieve detailed information about Cisco devices. It matches devices based on Cisco OUI (MAC address prefix) to ensure only Cisco equipment is included.
 
 ### Features
 
 - Interactive username/password authentication
 - Reads switch list from `switches.txt`
-- Identifies Cisco APs (devices starting with "C" in the Device column)
+- Identifies powered devices on local ports (x/0/x interfaces)
+- Excludes uplink ports (x/1/x interfaces)
+- Filters devices by Cisco OUI (MAC address prefix)
+- Retrieves VLAN information and excludes devices on VLAN 60
 - Retrieves hostname and MAC address via CDP
 - Outputs results to `aps.csv` in CSV format for easy analysis
 
@@ -37,6 +40,7 @@ A script to discover Cisco Access Points connected to Cisco switches via Power o
 
 2. Ensure you have SSH credentials with appropriate privileges to run:
    - `show power inline`
+   - `show interface status`
    - `show cdp neighbors detail`
 
 ### Usage
@@ -88,10 +92,10 @@ Summary by switch:
 
 **CSV File Output (aps.csv):**
 ```csv
-Switch,Interface,Hostname,MAC Address
-192.168.1.10,Gi1/0/1,AP-Floor1-East,a1:b2:c3:d4:e5:f6
-192.168.1.10,Gi1/0/5,AP-Floor1-West,a1:b2:c3:d4:e5:f7
-192.168.1.11,Gi1/0/3,AP-Floor2-Center,a1:b2:c3:d4:e5:f8
+Switch,Interface,VLAN,Hostname,MAC Address
+192.168.1.10,Gi1/0/1,31,AP-Floor1-East,a1:b2:c3:d4:e5:f6
+192.168.1.10,Gi1/0/5,40,AP-Floor1-West,a1:b2:c3:d4:e5:f7
+192.168.1.11,Gi1/0/3,31,AP-Floor2-Center,a1:b2:c3:d4:e5:f8
 ```
 
 ### How It Works
@@ -99,10 +103,14 @@ Switch,Interface,Hostname,MAC Address
 1. **Authentication**: Prompts for credentials to use across all switches
 2. **Switch Connection**: Connects to each switch via SSH
 3. **Power Inline Check**: Runs `show power inline` to find powered devices
-4. **Cisco Device Filter**: Identifies devices starting with "C" (Cisco naming convention)
-5. **CDP Query**: For each matching interface, runs `show cdp neighbors <interface> detail`
-6. **Data Extraction**: Parses CDP output to extract hostname and MAC address
-7. **Results Display**: Shows all discovered APs organized by switch
+4. **Local Port Filter**: Identifies local ports (x/0/x pattern) and excludes uplinks (x/1/x pattern)
+5. **Power Draw Filter**: Only includes interfaces with power draw > 0
+6. **VLAN Detection**: Runs `show interface status` to get VLAN information for each interface
+7. **VLAN Filter**: Excludes devices on VLAN 60
+8. **CDP Query**: For each matching interface, runs `show cdp neighbors <interface> detail`
+9. **Data Extraction**: Parses CDP output to extract hostname and MAC address
+10. **Cisco OUI Validation**: Verifies MAC address starts with a Cisco OUI prefix
+11. **Results Output**: Writes all discovered Cisco devices to `aps.csv` with VLAN information
 
 ### Troubleshooting
 
