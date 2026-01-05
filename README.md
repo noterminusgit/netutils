@@ -15,7 +15,7 @@ A script to discover Cisco Access Points connected to Cisco switches via Power o
 - Reads switch list from `switches.txt`
 - Identifies Cisco APs (devices starting with "C" in the Device column)
 - Retrieves hostname and MAC address via CDP
-- Displays organized results grouped by switch
+- Outputs results to `aps.csv` in CSV format for easy analysis
 
 ### Prerequisites
 
@@ -56,10 +56,11 @@ The script will:
 2. Prompt for your password
 3. Connect to each switch in `switches.txt`
 4. Discover Cisco APs on each switch
-5. Display results grouped by switch
+5. Write results to `aps.csv`
 
 ### Example Output
 
+**Terminal Output:**
 ```
 === Cisco AP Finder ===
 
@@ -78,21 +79,19 @@ Connecting to switch: 192.168.1.11...
 RESULTS: Found 3 Cisco AP(s) total
 ================================================================================
 
-Switch: 192.168.1.10
---------------------------------------------------------------------------------
-  Interface: Gi1/0/1
-  Hostname:  AP-Floor1-East
-  MAC:       a1:b2:c3:d4:e5:f6
+Results written to: aps.csv
 
-  Interface: Gi1/0/5
-  Hostname:  AP-Floor1-West
-  MAC:       a1:b2:c3:d4:e5:f7
+Summary by switch:
+  192.168.1.10: 2 AP(s)
+  192.168.1.11: 1 AP(s)
+```
 
-Switch: 192.168.1.11
---------------------------------------------------------------------------------
-  Interface: Gi1/0/3
-  Hostname:  AP-Floor2-Center
-  MAC:       a1:b2:c3:d4:e5:f8
+**CSV File Output (aps.csv):**
+```csv
+Switch,Interface,Hostname,MAC Address
+192.168.1.10,Gi1/0/1,AP-Floor1-East,a1:b2:c3:d4:e5:f6
+192.168.1.10,Gi1/0/5,AP-Floor1-West,a1:b2:c3:d4:e5:f7
+192.168.1.11,Gi1/0/3,AP-Floor2-Center,a1:b2:c3:d4:e5:f8
 ```
 
 ### How It Works
