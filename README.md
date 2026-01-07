@@ -16,7 +16,7 @@ A script to discover Cisco Access Points connected to Cisco switches via Power o
 - Identifies powered devices on local ports (x/0/x interfaces)
 - Excludes uplink ports (x/1/x interfaces)
 - Filters devices by Cisco OUI (MAC address prefix)
-- Retrieves VLAN information and excludes devices on VLAN 60
+- Retrieves VLAN information for each device
 - Retrieves hostname and MAC address via CDP
 - Outputs results to `aps.csv` in CSV format for easy analysis
 
@@ -106,11 +106,10 @@ Switch,Interface,VLAN,Hostname,MAC Address
 4. **Local Port Filter**: Identifies local ports (x/0/x pattern) and excludes uplinks (x/1/x pattern)
 5. **Power Draw Filter**: Only includes interfaces with power draw > 0
 6. **VLAN Detection**: Runs `show interface status` to get VLAN information for each interface
-7. **VLAN Filter**: Excludes devices on VLAN 60
-8. **CDP Query**: For each matching interface, runs `show cdp neighbors <interface> detail`
-9. **Data Extraction**: Parses CDP output to extract hostname and MAC address
-10. **Cisco OUI Validation**: Verifies MAC address starts with a Cisco OUI prefix
-11. **Results Output**: Writes all discovered Cisco devices to `aps.csv` with VLAN information
+7. **CDP Query**: For each matching interface, runs `show cdp neighbors <interface> detail`
+8. **Data Extraction**: Parses CDP output to extract hostname and MAC address
+9. **Cisco OUI Validation**: Verifies MAC address starts with a Cisco OUI prefix
+10. **Results Output**: Writes all discovered Cisco devices to `aps.csv` with VLAN information
 
 ### Troubleshooting
 
