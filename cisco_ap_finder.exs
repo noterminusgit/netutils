@@ -179,18 +179,13 @@ defmodule CiscoAPFinder do
     # Get VLAN for this interface
     vlan = Map.get(vlan_map, interface, "Unknown")
 
-    # Skip devices on VLAN 60
-    if vlan == 60 do
-      nil
-    else
-      # Get CDP neighbor detail for this specific interface
-      case execute_command(conn, "show cdp neighbors #{interface} detail") do
-        {:ok, cdp_output} ->
-          parse_cdp_neighbor_detail(cdp_output, interface, switch, vlan)
+    # Get CDP neighbor detail for this specific interface
+    case execute_command(conn, "show cdp neighbors #{interface} detail") do
+      {:ok, cdp_output} ->
+        parse_cdp_neighbor_detail(cdp_output, interface, switch, vlan)
 
-        {:error, _reason} ->
-          nil
-      end
+      {:error, _reason} ->
+        nil
     end
   end
 
