@@ -33,10 +33,19 @@ defmodule CiscoAPFinder do
     IO.puts("\nFound #{length(switches)} switch(es) to scan...")
     IO.puts("Switches: #{Enum.join(switches, ", ")}\n")
 
-    # Connect to each switch and find APs
-    all_aps = Enum.flat_map(switches, fn switch ->
-      find_aps_on_switch(switch, username, password)
-    end)
+    # Connect to each switch and find APs in parallel
+    all_aps =
+      switches
+      |> Task.async_stream(
+        fn switch -> find_aps_on_switch(switch, username, password) end,
+        max_concurrency: 10,
+        timeout: 120_000,
+        on_timeout: :kill_task
+      )
+      |> Enum.flat_map(fn
+        {:ok, aps} -> aps
+        {:exit, _reason} -> []
+      end)
 
     # Display results
     display_results(all_aps)
