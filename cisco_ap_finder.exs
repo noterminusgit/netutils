@@ -57,9 +57,15 @@ defmodule CiscoAPFinder do
   end
 
   defp get_password(prompt) do
-    # Use Erlang's built-in secure password prompt
-    password = :io.get_password(to_charlist(prompt)) |> to_string() |> String.trim()
-    password
+    # Try secure password input first (works on Unix/Linux/macOS)
+    try do
+      :io.get_password(to_charlist(prompt)) |> to_string() |> String.trim()
+    rescue
+      # Fall back to regular input on Windows
+      _ ->
+        IO.write(prompt <> " (WARNING: input will be visible) ")
+        IO.read(:stdio, :line) |> String.trim()
+    end
   end
 
   defp read_switches_file(filename) do
