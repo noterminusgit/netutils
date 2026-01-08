@@ -58,7 +58,18 @@ defmodule CiscoAPFinder do
 
   defp get_password(prompt) do
     IO.write(prompt)
+
+    # Disable echo for secure password input
+    port = Port.open({:spawn, "stty -echo"}, [:binary])
+    Port.close(port)
+
     password = IO.read(:stdio, :line) |> String.trim()
+
+    # Re-enable echo
+    port = Port.open({:spawn, "stty echo"}, [:binary])
+    Port.close(port)
+
+    IO.write("\n")
     password
   end
 
