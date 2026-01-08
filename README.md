@@ -11,14 +11,16 @@ A script to discover Cisco Access Points connected to Cisco switches via Power o
 
 ### Features
 
-- Interactive username/password authentication
+- Interactive username/password authentication (secure password input)
+- Parallel processing of up to 10 switches simultaneously for fast scanning
 - Reads switch list from `switches.txt`
 - Identifies powered devices on local ports (x/0/x interfaces)
 - Excludes uplink ports (x/1/x interfaces)
-- Filters devices by Cisco OUI (MAC address prefix)
+- Filters devices by Cisco OUI (MAC address prefix) with 500+ known prefixes
 - Retrieves VLAN information for each device
 - Retrieves hostname and MAC address via CDP
 - Outputs results to `aps.csv` in CSV format for easy analysis
+- Fault-tolerant: continues processing if individual switches fail or timeout
 
 ### Prerequisites
 
@@ -57,9 +59,9 @@ elixir cisco_ap_finder.exs
 
 The script will:
 1. Prompt for your username
-2. Prompt for your password
-3. Connect to each switch in `switches.txt`
-4. Discover Cisco APs on each switch
+2. Prompt for your password (input hidden for security)
+3. Connect to switches in `switches.txt` (up to 10 in parallel)
+4. Discover Cisco devices on each switch
 5. Write results to `aps.csv`
 
 ### Example Output
@@ -69,15 +71,17 @@ The script will:
 === Cisco AP Finder ===
 
 Enter username: admin
-Enter password:
+Enter password: [hidden]
 
 Found 3 switch(es) to scan...
 Switches: 192.168.1.10, 192.168.1.11, 192.168.1.12
 
 Connecting to switch: 192.168.1.10...
-  Found 2 Cisco AP(s) on 192.168.1.10
 Connecting to switch: 192.168.1.11...
+Connecting to switch: 192.168.1.12...
+  Found 2 Cisco AP(s) on 192.168.1.10
   Found 1 Cisco AP(s) on 192.168.1.11
+  Found 0 Cisco AP(s) on 192.168.1.12
 
 ================================================================================
 RESULTS: Found 3 Cisco AP(s) total
@@ -90,6 +94,8 @@ Summary by switch:
   192.168.1.11: 1 AP(s)
 ```
 
+*Note: With parallel processing, connection messages may appear in different orders.*
+
 **CSV File Output (aps.csv):**
 ```csv
 Switch,Interface,VLAN,Hostname,MAC Address
@@ -100,23 +106,28 @@ Switch,Interface,VLAN,Hostname,MAC Address
 
 ### How It Works
 
-1. **Authentication**: Prompts for credentials to use across all switches
-2. **Switch Connection**: Connects to each switch via SSH
-3. **Power Inline Check**: Runs `show power inline` to find powered devices
-4. **Local Port Filter**: Identifies local ports (x/0/x pattern) and excludes uplinks (x/1/x pattern)
-5. **Power Draw Filter**: Only includes interfaces with power draw > 0
-6. **VLAN Detection**: Runs `show interface status` to get VLAN information for each interface
-7. **CDP Query**: For each matching interface, runs `show cdp neighbors <interface> detail`
-8. **Data Extraction**: Parses CDP output to extract hostname and MAC address
-9. **Cisco OUI Validation**: Verifies MAC address starts with a Cisco OUI prefix
-10. **Results Output**: Writes all discovered Cisco devices to `aps.csv` with VLAN information
+1. **Initialization**: Starts SSH application for connection handling
+2. **Authentication**: Prompts for credentials (password input is hidden)
+3. **Parallel Processing**: Connects to up to 10 switches simultaneously via SSH
+4. **Per Switch Processing**:
+   - Runs `show power inline` to find powered devices
+   - Filters for local ports (x/0/x) excluding uplinks (x/1/x)
+   - Filters for interfaces with power draw > 0
+   - Runs `show interface status` to get VLAN information
+   - For each matching interface, runs `show cdp neighbors <interface> detail`
+   - Extracts hostname and MAC address from CDP output
+   - Validates MAC address against Cisco OUI prefixes
+5. **Results Compilation**: Aggregates results from all switches
+6. **CSV Output**: Writes all discovered Cisco devices to `aps.csv` with switch, interface, VLAN, hostname, and MAC address
 
 ### Troubleshooting
 
 - **Connection failures**: Verify SSH access and credentials
-- **No APs found**: Ensure CDP is enabled (`cdp run` and `cdp enable` on interfaces)
+- **No devices found**: Ensure CDP is enabled (`cdp run` and `cdp enable` on interfaces)
 - **Missing MAC addresses**: Check that CDP is advertising properly
-- **Script hangs**: May indicate SSH timeout - check network connectivity
+- **Timeout errors**: Each switch has a 120-second timeout. Slow switches may timeout but others will continue processing
+- **Interleaved output**: Terminal messages from different switches may appear out of order due to parallel processing - this is normal
+- **Performance**: Script processes up to 10 switches concurrently. Adjust `max_concurrency` in the script if needed
 
 ### License
 
