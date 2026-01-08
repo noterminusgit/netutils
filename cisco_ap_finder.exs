@@ -15,6 +15,9 @@ defmodule CiscoAPFinder do
   def run do
     IO.puts("\n=== Cisco AP Finder ===\n")
 
+    # Start SSH application
+    :ssh.start()
+
     # Get credentials
     username = get_input("Enter username: ")
     password = get_password("Enter password: ")
