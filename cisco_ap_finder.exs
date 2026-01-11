@@ -9,7 +9,7 @@ defmodule CiscoAPFinder do
   """
 
   defmodule AP do
-    defstruct [:hostname, :mac_address, :interface, :switch, :vlan]
+    defstruct [:hostname, :mac_address, :interface, :switch, :vlan, :model]
   end
 
   def run do
@@ -132,12 +132,12 @@ defmodule CiscoAPFinder do
     # Execute "show power inline" command
     case execute_command(conn, "show power inline") do
       {:ok, power_output} ->
-        # Get interfaces with powered devices
-        interfaces = parse_power_inline_output(power_output)
+        # Get interfaces with powered devices and their models
+        interface_models = parse_power_inline_output(power_output)
 
         # For each interface, get MAC address and VLAN, then check if it's a Cisco device
-        Enum.map(interfaces, fn interface ->
-          get_ap_details(conn, interface, switch)
+        Enum.map(interface_models, fn {interface, model} ->
+          get_ap_details(conn, interface, model, switch)
         end)
         |> Enum.reject(&is_nil/1)
 
@@ -146,7 +146,7 @@ defmodule CiscoAPFinder do
     end
   end
 
-  defp get_ap_details(conn, interface, switch) do
+  defp get_ap_details(conn, interface, model, switch) do
     # Get MAC address and VLAN from MAC address table
     case execute_command(conn, "show mac address-table interface #{interface}") do
       {:ok, mac_output} ->
@@ -162,7 +162,8 @@ defmodule CiscoAPFinder do
                 mac_address: mac_address,
                 interface: interface,
                 switch: switch,
-                vlan: vlan
+                vlan: vlan,
+                model: model
               }
             else
               nil
@@ -266,10 +267,10 @@ defmodule CiscoAPFinder do
     lines = String.split(output, "\n")
 
     # Find powered devices on local ports (x/0/x) with power > 0
-    # Return list of interface names
+    # Return list of {interface, model} tuples
     lines
     |> Enum.filter(&is_powered_local_port?/1)
-    |> Enum.map(&extract_interface/1)
+    |> Enum.map(&extract_interface_and_model/1)
     |> Enum.reject(&is_nil/1)
   end
 
@@ -312,12 +313,20 @@ defmodule CiscoAPFinder do
     end
   end
 
-  defp extract_interface(line) do
-    # Parse the line to extract interface name
+  defp extract_interface_and_model(line) do
+    # Parse the line to extract interface name and model
+    # Format: Tw1/0/1   auto   on    14.0    C9105AXW-B          4     60.0
+    # Columns: Interface, Admin, Oper, Power, Device, Class, Max
     parts = String.split(String.trim(line), ~r/\s+/)
 
-    if length(parts) >= 1 do
-      Enum.at(parts, 0)
+    if length(parts) >= 5 do
+      interface = Enum.at(parts, 0)
+      model = Enum.at(parts, 4)
+
+      # Replace "n/a" with "Unknown"
+      model = if model == "n/a", do: "Unknown", else: model
+
+      {interface, model}
     else
       nil
     end
@@ -469,11 +478,11 @@ defmodule CiscoAPFinder do
     # Create CSV content
     csv_lines = [
       # Header
-      "Switch,Interface,VLAN,Hostname,MAC Address"
+      "Switch,Interface,VLAN,Model,Hostname,MAC Address"
       |
       # Data rows
       Enum.map(aps, fn ap ->
-        [ap.switch, ap.interface, to_string(ap.vlan), ap.hostname, ap.mac_address]
+        [ap.switch, ap.interface, to_string(ap.vlan), ap.model, ap.hostname, ap.mac_address]
         |> Enum.map(&escape_csv_field/1)
         |> Enum.join(",")
       end)

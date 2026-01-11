@@ -16,6 +16,7 @@ A script to discover Cisco Access Points connected to Cisco switches via Power o
 - Reads switch list from `switches.txt`
 - Identifies powered devices on local ports (x/0/x interfaces)
 - Excludes uplink ports (x/1/x interfaces)
+- Extracts device model from power inline output
 - Retrieves MAC address and VLAN from MAC address table
 - Filters devices by Cisco OUI (MAC address prefix) with 500+ known prefixes
 - Retrieves hostname via CDP (optional - will show "Unknown" if CDP unavailable)
@@ -98,10 +99,10 @@ Summary by switch:
 
 **CSV File Output (aps.csv):**
 ```csv
-Switch,Interface,VLAN,Hostname,MAC Address
-192.168.1.10,Gi1/0/1,31,AP-Floor1-East,a1:b2:c3:d4:e5:f6
-192.168.1.10,Gi1/0/5,40,AP-Floor1-West,a1:b2:c3:d4:e5:f7
-192.168.1.11,Gi1/0/3,31,AP-Floor2-Center,a1:b2:c3:d4:e5:f8
+Switch,Interface,VLAN,Model,Hostname,MAC Address
+192.168.1.10,Gi1/0/1,31,C9105AXW-B,AP-Floor1-East,a1:b2:c3:d4:e5:f6
+192.168.1.10,Gi1/0/5,40,AIR-AP2802I-B-K9,AP-Floor1-West,a1:b2:c3:d4:e5:f7
+192.168.1.11,Gi1/0/3,31,Ieee PD,AP-Floor2-Center,a1:b2:c3:d4:e5:f8
 ```
 
 ### How It Works
@@ -113,12 +114,13 @@ Switch,Interface,VLAN,Hostname,MAC Address
    - Runs `show power inline` to find powered devices
    - Filters for local ports (x/0/x) excluding uplinks (x/1/x)
    - Filters for interfaces with power draw > 0
+   - Extracts device model from power inline output (e.g., C9105AXW-B, Ieee PD)
    - For each matching interface, runs `show mac address-table interface <interface>`
    - Extracts VLAN and MAC address from MAC address table
    - Validates MAC address against Cisco OUI prefixes (500+ known prefixes)
    - If Cisco device detected, retrieves hostname from `show cdp neighbors <interface> detail`
 5. **Results Compilation**: Aggregates results from all switches
-6. **CSV Output**: Writes all discovered Cisco devices to `aps.csv` with switch, interface, VLAN, hostname, and MAC address
+6. **CSV Output**: Writes all discovered Cisco devices to `aps.csv` with switch, interface, VLAN, model, hostname, and MAC address
 
 ### Troubleshooting
 
