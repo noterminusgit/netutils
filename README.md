@@ -7,7 +7,7 @@ A script to discover Cisco Access Points connected to Cisco switches via Power o
 
 ### Description
 
-`cisco_ap_finder.exs` connects to a list of Cisco switches via SSH, runs the `show power inline` command to identify powered devices on local ports, and then uses CDP (Cisco Discovery Protocol) to retrieve detailed information about Cisco devices. It matches devices based on Cisco OUI (MAC address prefix) to ensure only Cisco equipment is included.
+`cisco_ap_finder.exs` connects to a list of Cisco switches via SSH, runs the `show power inline` command to identify powered devices on local ports, and then uses the MAC address table to retrieve VLAN and MAC address information. It matches devices based on Cisco OUI (MAC address prefix) to ensure only Cisco equipment is included. CDP (Cisco Discovery Protocol) is used for hostname resolution.
 
 ### Features
 
@@ -16,9 +16,9 @@ A script to discover Cisco Access Points connected to Cisco switches via Power o
 - Reads switch list from `switches.txt`
 - Identifies powered devices on local ports (x/0/x interfaces)
 - Excludes uplink ports (x/1/x interfaces)
+- Retrieves MAC address and VLAN from MAC address table
 - Filters devices by Cisco OUI (MAC address prefix) with 500+ known prefixes
-- Retrieves VLAN information for each device
-- Retrieves hostname and MAC address via CDP
+- Retrieves hostname via CDP (optional - will show "Unknown" if CDP unavailable)
 - Outputs results to `aps.csv` in CSV format for easy analysis
 - Fault-tolerant: continues processing if individual switches fail or timeout
 
@@ -26,8 +26,8 @@ A script to discover Cisco Access Points connected to Cisco switches via Power o
 
 - Elixir installed on your system
 - SSH access to Cisco switches
-- CDP enabled on switches and APs
 - Switches listed in `switches.txt`
+- CDP enabled (optional - only required for hostname resolution; devices will still be detected without CDP)
 
 ### Setup
 
@@ -59,7 +59,7 @@ elixir cisco_ap_finder.exs
 
 The script will:
 1. Prompt for your username
-2. Prompt for your password (input hidden for security)
+2. Prompt for your password (input hidden on Unix/Linux/macOS; visible on Windows)
 3. Connect to switches in `switches.txt` (up to 10 in parallel)
 4. Discover Cisco devices on each switch
 5. Write results to `aps.csv`
@@ -123,8 +123,12 @@ Switch,Interface,VLAN,Hostname,MAC Address
 ### Troubleshooting
 
 - **Connection failures**: Verify SSH access and credentials
-- **No devices found**: Ensure CDP is enabled (`cdp run` and `cdp enable` on interfaces)
-- **Missing MAC addresses**: Check that CDP is advertising properly
+- **No devices found**:
+  - Verify devices are powered on and drawing power (check `show power inline`)
+  - Ensure MAC address table has entries (`show mac address-table interface <interface>`)
+  - Verify MAC addresses match Cisco OUI prefixes
+- **Hostname shows "Unknown"**: CDP may not be enabled. Enable with `cdp run` and `cdp enable` on interfaces
+- **Missing VLAN or MAC data**: Check that MAC address table is populated for the interface
 - **Timeout errors**: Each switch has a 120-second timeout. Slow switches may timeout but others will continue processing
 - **Interleaved output**: Terminal messages from different switches may appear out of order due to parallel processing - this is normal
 - **Performance**: Script processes up to 10 switches concurrently. Adjust `max_concurrency` in the script if needed
