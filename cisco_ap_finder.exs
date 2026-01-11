@@ -9,7 +9,7 @@ defmodule CiscoAPFinder do
   """
 
   defmodule AP do
-    defstruct [:hostname, :mac_address, :interface, :switch, :vlan]
+    defstruct [:hostname, :mac_address, :interface, :switch, :vlan, :model]
   end
 
   def run do
@@ -132,15 +132,12 @@ defmodule CiscoAPFinder do
     # Execute "show power inline" command
     case execute_command(conn, "show power inline") do
       {:ok, power_output} ->
-        # Get interfaces with Cisco APs
-        interfaces = parse_power_inline_output(power_output)
+        # Get interfaces with powered devices and their models
+        interface_models = parse_power_inline_output(power_output)
 
-        # Get VLAN information for all interfaces
-        vlan_map = get_vlan_map(conn)
-
-        # For each interface, get CDP neighbor details to find hostname and MAC
-        Enum.map(interfaces, fn interface ->
-          get_ap_details(conn, interface, switch, vlan_map)
+        # For each interface, get MAC address and VLAN, then check if it's a Cisco device
+        Enum.map(interface_models, fn {interface, model} ->
+          get_ap_details(conn, interface, model, switch)
         end)
         |> Enum.reject(&is_nil/1)
 
@@ -149,58 +146,81 @@ defmodule CiscoAPFinder do
     end
   end
 
-  defp get_vlan_map(conn) do
-    # Execute "show interface status" to get VLAN information
-    case execute_command(conn, "show interface status") do
-      {:ok, output} ->
-        parse_interface_status(output)
+  defp get_ap_details(conn, interface, model, switch) do
+    # Get MAC address and VLAN from MAC address table
+    case execute_command(conn, "show mac address-table interface #{interface}") do
+      {:ok, mac_output} ->
+        case parse_mac_address_table(mac_output) do
+          {:ok, vlan, mac_address} ->
+            # Check if it's a Cisco device by OUI
+            if is_cisco_oui?(mac_address) do
+              # Get hostname from CDP
+              hostname = get_hostname_from_cdp(conn, interface)
+
+              %AP{
+                hostname: hostname || "Unknown",
+                mac_address: mac_address,
+                interface: interface,
+                switch: switch,
+                vlan: vlan,
+                model: model
+              }
+            else
+              nil
+            end
+
+          :error ->
+            nil
+        end
 
       {:error, _reason} ->
-        %{}
+        nil
     end
   end
 
-  defp parse_interface_status(output) do
+  defp parse_mac_address_table(output) do
+    # Parse output like:
+    # Vlan    Mac Address       Type        Ports
+    # ----    -----------       --------    -----
+    #   50    90e9.5e89.e2a4    STATIC      Gi1/0/10
+
     lines = String.split(output, "\n")
 
-    lines
-    |> Enum.reduce(%{}, fn line, acc ->
-      # Skip header lines and empty lines
-      trimmed = String.trim(line)
+    # Find the line with MAC address data (skip headers)
+    result =
+      lines
+      |> Enum.find_value(fn line ->
+        trimmed = String.trim(line)
+        parts = String.split(trimmed, ~r/\s+/)
 
-      cond do
-        trimmed == "" -> acc
-        String.contains?(trimmed, "Port") -> acc
-        String.contains?(trimmed, "---") -> acc
-        true ->
-          # Parse the line to extract interface and VLAN
-          # Format: Port  Name  Status  Vlan  Duplex  Speed  Type
-          parts = String.split(trimmed, ~r/\s+/)
+        # Look for lines with VLAN (number), MAC (format: xxxx.xxxx.xxxx), Type, Port
+        cond do
+          trimmed == "" -> nil
+          String.contains?(trimmed, "Vlan") -> nil
+          String.contains?(trimmed, "---") -> nil
+          String.contains?(trimmed, "Total") -> nil
+          length(parts) >= 4 ->
+            vlan_str = Enum.at(parts, 0)
+            mac_str = Enum.at(parts, 1)
 
-          if length(parts) >= 4 do
-            interface = Enum.at(parts, 0)
-            vlan_str = Enum.at(parts, 3)
-
-            # Try to parse VLAN as integer
-            case Integer.parse(vlan_str) do
-              {vlan, _} -> Map.put(acc, interface, vlan)
-              :error -> acc
+            # Try to parse VLAN and validate MAC format
+            case {Integer.parse(vlan_str), Regex.match?(~r/^[0-9a-fA-F]{4}\.[0-9a-fA-F]{4}\.[0-9a-fA-F]{4}$/, mac_str)} do
+              {{vlan, _}, true} -> {:ok, vlan, mac_str}
+              _ -> nil
             end
-          else
-            acc
-          end
-      end
-    end)
+
+          true -> nil
+        end
+      end)
+
+    result || :error
   end
 
-  defp get_ap_details(conn, interface, switch, vlan_map) do
-    # Get VLAN for this interface
-    vlan = Map.get(vlan_map, interface, "Unknown")
-
-    # Get CDP neighbor detail for this specific interface
+  defp get_hostname_from_cdp(conn, interface) do
+    # Try to get hostname from CDP neighbor detail
     case execute_command(conn, "show cdp neighbors #{interface} detail") do
       {:ok, cdp_output} ->
-        parse_cdp_neighbor_detail(cdp_output, interface, switch, vlan)
+        extract_cdp_field(String.split(cdp_output, "\n"), "Device ID:")
 
       {:error, _reason} ->
         nil
@@ -247,10 +267,10 @@ defmodule CiscoAPFinder do
     lines = String.split(output, "\n")
 
     # Find powered devices on local ports (x/0/x) with power > 0
-    # Return list of interface names
+    # Return list of {interface, model} tuples
     lines
     |> Enum.filter(&is_powered_local_port?/1)
-    |> Enum.map(&extract_interface/1)
+    |> Enum.map(&extract_interface_and_model/1)
     |> Enum.reject(&is_nil/1)
   end
 
@@ -293,43 +313,20 @@ defmodule CiscoAPFinder do
     end
   end
 
-  defp extract_interface(line) do
-    # Parse the line to extract interface name
+  defp extract_interface_and_model(line) do
+    # Parse the line to extract interface name and model
+    # Format: Tw1/0/1   auto   on    14.0    C9105AXW-B          4     60.0
+    # Columns: Interface, Admin, Oper, Power, Device, Class, Max
     parts = String.split(String.trim(line), ~r/\s+/)
 
-    if length(parts) >= 1 do
-      Enum.at(parts, 0)
-    else
-      nil
-    end
-  end
+    if length(parts) >= 5 do
+      interface = Enum.at(parts, 0)
+      model = Enum.at(parts, 4)
 
-  defp parse_cdp_neighbor_detail(output, interface, switch, vlan) do
-    # Parse CDP neighbor detail output to extract hostname and MAC address
-    # Example output:
-    # Device ID: AP-HOSTNAME
-    # Platform: cisco AIR-AP2802I-B-K9, Capabilities: Trans-Bridge
-    # ...
-    # Entry address(es):
-    #   IP address: 192.168.1.100
-    # ...
-    # Management address(es):
-    # ...
+      # Replace "n/a" with "Unknown"
+      model = if model == "n/a", do: "Unknown", else: model
 
-    lines = String.split(output, "\n")
-
-    hostname = extract_cdp_field(lines, "Device ID:")
-    mac_address = extract_cdp_mac_address(lines)
-
-    # Only include if we have a hostname, MAC, and it's a Cisco device (by OUI)
-    if hostname && mac_address && is_cisco_oui?(mac_address) do
-      %AP{
-        hostname: hostname,
-        mac_address: mac_address,
-        interface: interface,
-        switch: switch,
-        vlan: vlan
-      }
+      {interface, model}
     else
       nil
     end
@@ -346,26 +343,6 @@ defmodule CiscoAPFinder do
         |> List.last()
         |> String.trim()
     end
-  end
-
-  defp extract_cdp_mac_address(lines) do
-    # Look for platform line which often contains MAC or look for address fields
-    # CDP detail may show MAC in different formats, we'll try to extract it
-    # Common patterns:
-    # - In "Platform:" line: "cisco AIR-AP2802I-B-K9, Capabilities: ..."
-    # - In address lines
-    # - Sometimes as separate MAC address field
-
-    # Try to find a MAC address pattern (xx:xx:xx:xx:xx:xx or xxxx.xxxx.xxxx)
-    mac_regex = ~r/([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}|([0-9a-fA-F]{4}\.){2}[0-9a-fA-F]{4}/
-
-    lines
-    |> Enum.find_value(fn line ->
-      case Regex.run(mac_regex, line) do
-        [mac | _] -> mac
-        nil -> nil
-      end
-    end)
   end
 
   defp is_cisco_oui?(mac_address) do
@@ -501,11 +478,11 @@ defmodule CiscoAPFinder do
     # Create CSV content
     csv_lines = [
       # Header
-      "Switch,Interface,VLAN,Hostname,MAC Address"
+      "Switch,Interface,VLAN,Model,Hostname,MAC Address"
       |
       # Data rows
       Enum.map(aps, fn ap ->
-        [ap.switch, ap.interface, to_string(ap.vlan), ap.hostname, ap.mac_address]
+        [ap.switch, ap.interface, to_string(ap.vlan), ap.model, ap.hostname, ap.mac_address]
         |> Enum.map(&escape_csv_field/1)
         |> Enum.join(",")
       end)
