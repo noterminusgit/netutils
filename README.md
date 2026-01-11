@@ -42,8 +42,8 @@ A script to discover Cisco Access Points connected to Cisco switches via Power o
 
 2. Ensure you have SSH credentials with appropriate privileges to run:
    - `show power inline`
-   - `show interface status`
-   - `show cdp neighbors detail`
+   - `show mac address-table interface`
+   - `show cdp neighbors detail` (for hostname resolution)
 
 ### Usage
 
@@ -107,16 +107,16 @@ Switch,Interface,VLAN,Hostname,MAC Address
 ### How It Works
 
 1. **Initialization**: Starts SSH application for connection handling
-2. **Authentication**: Prompts for credentials (password input is hidden)
+2. **Authentication**: Prompts for credentials (password input is hidden on Unix/Linux/macOS)
 3. **Parallel Processing**: Connects to up to 10 switches simultaneously via SSH
 4. **Per Switch Processing**:
    - Runs `show power inline` to find powered devices
    - Filters for local ports (x/0/x) excluding uplinks (x/1/x)
    - Filters for interfaces with power draw > 0
-   - Runs `show interface status` to get VLAN information
-   - For each matching interface, runs `show cdp neighbors <interface> detail`
-   - Extracts hostname and MAC address from CDP output
-   - Validates MAC address against Cisco OUI prefixes
+   - For each matching interface, runs `show mac address-table interface <interface>`
+   - Extracts VLAN and MAC address from MAC address table
+   - Validates MAC address against Cisco OUI prefixes (500+ known prefixes)
+   - If Cisco device detected, retrieves hostname from `show cdp neighbors <interface> detail`
 5. **Results Compilation**: Aggregates results from all switches
 6. **CSV Output**: Writes all discovered Cisco devices to `aps.csv` with switch, interface, VLAN, hostname, and MAC address
 
