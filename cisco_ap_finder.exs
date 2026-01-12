@@ -297,9 +297,12 @@ defmodule CiscoAPFinder do
         # Send the command
         :ssh_connection.exec(conn, channel, to_charlist(command), :infinity)
 
-        # Collect output
+        # Collect output (waits for prompt)
         output = collect_output(conn, channel, "")
         :ssh_connection.close(conn, channel)
+
+        # Small delay between commands to let the switch stabilize
+        Process.sleep(200)
 
         {:ok, output}
 
@@ -311,7 +314,17 @@ defmodule CiscoAPFinder do
   defp collect_output(conn, channel, acc) do
     receive do
       {:ssh_cm, ^conn, {:data, ^channel, 0, data}} ->
-        collect_output(conn, channel, acc <> to_string(data))
+        new_acc = acc <> to_string(data)
+
+        # Check if we've received the prompt (ends with # or >)
+        # This indicates the command has completed
+        if String.ends_with?(String.trim(new_acc), "#") or String.ends_with?(String.trim(new_acc), ">") do
+          # Wait a tiny bit more to make sure we got everything
+          Process.sleep(100)
+          new_acc
+        else
+          collect_output(conn, channel, new_acc)
+        end
 
       {:ssh_cm, ^conn, {:eof, ^channel}} ->
         acc
@@ -322,7 +335,8 @@ defmodule CiscoAPFinder do
       {:ssh_cm, ^conn, {:closed, ^channel}} ->
         acc
     after
-      5000 ->
+      10000 ->
+        # Increased timeout to 10 seconds
         acc
     end
   end
