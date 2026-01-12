@@ -103,12 +103,45 @@ defmodule CiscoAPFinder do
     case connect_ssh(switch, username, password) do
       {:ok, conn} ->
         log(log_file, "Successfully connected to #{switch}")
-        aps = get_cisco_aps(conn, switch, log_file)
-        disconnect_ssh(conn)
-        log(log_file, "Found #{length(aps)} Cisco AP(s) on #{switch}")
-        log(log_file, "=== Scan complete ===")
-        IO.puts("  Found #{length(aps)} Cisco AP(s) on #{switch}")
-        aps
+
+        # Open a single channel with PTY for all commands
+        case :ssh_connection.session_channel(conn, :infinity) do
+          {:ok, channel} ->
+            log(log_file, "SSH channel opened")
+
+            # Request a PTY for interactive shell
+            :ssh_connection.ptty_alloc(conn, channel, [
+              {:term, 'vt100'},
+              {:width, 80},
+              {:height, 24},
+              {:pixel_width, 640},
+              {:pixel_height, 480},
+              {:pty_opts, []}
+            ])
+
+            # Start shell
+            :ssh_connection.shell(conn, channel)
+
+            # Wait for initial prompt
+            Process.sleep(500)
+            _ = collect_output(conn, channel, "")
+
+            log(log_file, "Interactive shell started")
+
+            aps = get_cisco_aps(conn, channel, switch, log_file)
+            :ssh_connection.close(conn, channel)
+            log(log_file, "SSH channel closed")
+            disconnect_ssh(conn)
+            log(log_file, "Found #{length(aps)} Cisco AP(s) on #{switch}")
+            log(log_file, "=== Scan complete ===")
+            IO.puts("  Found #{length(aps)} Cisco AP(s) on #{switch}")
+            aps
+
+          {:error, reason} ->
+            log(log_file, "ERROR: Failed to open SSH channel: #{inspect(reason)}")
+            disconnect_ssh(conn)
+            []
+        end
 
       {:error, reason} ->
         log(log_file, "ERROR: Failed to connect to #{switch}: #{inspect(reason)}")
@@ -154,11 +187,11 @@ defmodule CiscoAPFinder do
     :ssh.close(conn)
   end
 
-  defp get_cisco_aps(conn, switch, log_file) do
+  defp get_cisco_aps(conn, channel, switch, log_file) do
     log(log_file, "Executing: show power inline")
 
     # Execute "show power inline" command
-    case execute_command(conn, "show power inline") do
+    case execute_command(conn, channel, "show power inline") do
       {:ok, power_output} ->
         log(log_file, "Power inline output received (#{String.length(power_output)} bytes)")
         log(log_file, "--- BEGIN show power inline ---")
@@ -171,7 +204,7 @@ defmodule CiscoAPFinder do
 
         # For each interface, get MAC address and VLAN, then check if it's a Cisco device
         Enum.map(interface_models, fn {interface, model} ->
-          get_ap_details(conn, interface, model, switch, log_file)
+          get_ap_details(conn, channel, interface, model, switch, log_file)
         end)
         |> Enum.reject(&is_nil/1)
 
@@ -181,12 +214,12 @@ defmodule CiscoAPFinder do
     end
   end
 
-  defp get_ap_details(conn, interface, model, switch, log_file) do
+  defp get_ap_details(conn, channel, interface, model, switch, log_file) do
     log(log_file, "Processing interface #{interface} (model: #{model})")
     log(log_file, "Executing: show mac address-table interface #{interface}")
 
     # Get MAC address and VLAN from MAC address table
-    case execute_command(conn, "show mac address-table interface #{interface}") do
+    case execute_command(conn, channel, "show mac address-table interface #{interface}") do
       {:ok, mac_output} ->
         log(log_file, "--- BEGIN show mac address-table interface #{interface} ---")
         log(log_file, mac_output)
@@ -202,7 +235,7 @@ defmodule CiscoAPFinder do
 
               # Get hostname from CDP
               log(log_file, "Executing: show cdp neighbors #{interface} detail")
-              hostname = get_hostname_from_cdp(conn, interface, log_file)
+              hostname = get_hostname_from_cdp(conn, channel, interface, log_file)
               log(log_file, "Hostname from CDP: #{hostname || "Unknown"}")
 
               log(log_file, "✓ Adding AP: #{hostname || "Unknown"} (#{mac_address}) on #{interface}")
@@ -269,9 +302,9 @@ defmodule CiscoAPFinder do
     result || :error
   end
 
-  defp get_hostname_from_cdp(conn, interface, log_file) do
+  defp get_hostname_from_cdp(conn, channel, interface, log_file) do
     # Try to get hostname from CDP neighbor detail
-    case execute_command(conn, "show cdp neighbors #{interface} detail") do
+    case execute_command(conn, channel, "show cdp neighbors #{interface} detail") do
       {:ok, cdp_output} ->
         log(log_file, "--- BEGIN show cdp neighbors #{interface} detail ---")
         log(log_file, cdp_output)
@@ -291,27 +324,33 @@ defmodule CiscoAPFinder do
     end
   end
 
-  defp execute_command(conn, command) do
-    case :ssh_connection.session_channel(conn, :infinity) do
-      {:ok, channel} ->
-        # Send the command
-        :ssh_connection.exec(conn, channel, to_charlist(command), :infinity)
+  defp execute_command(conn, channel, command) do
+    # Send the command (with newline to execute it)
+    :ssh_connection.send(conn, channel, to_charlist(command <> "\n"), 0)
 
-        # Collect output
-        output = collect_output(conn, channel, "")
-        :ssh_connection.close(conn, channel)
+    # Collect output (waits for prompt)
+    output = collect_output(conn, channel, "")
 
-        {:ok, output}
+    # Small delay between commands to let the switch stabilize
+    Process.sleep(50)
 
-      {:error, reason} ->
-        {:error, reason}
-    end
+    {:ok, output}
   end
 
   defp collect_output(conn, channel, acc) do
     receive do
       {:ssh_cm, ^conn, {:data, ^channel, 0, data}} ->
-        collect_output(conn, channel, acc <> to_string(data))
+        new_acc = acc <> to_string(data)
+
+        # Check if we've received the prompt (ends with # or >)
+        # This indicates the command has completed
+        if String.ends_with?(String.trim(new_acc), "#") or String.ends_with?(String.trim(new_acc), ">") do
+          # Wait a tiny bit more to make sure we got everything
+          Process.sleep(10)
+          new_acc
+        else
+          collect_output(conn, channel, new_acc)
+        end
 
       {:ssh_cm, ^conn, {:eof, ^channel}} ->
         acc
@@ -322,7 +361,8 @@ defmodule CiscoAPFinder do
       {:ssh_cm, ^conn, {:closed, ^channel}} ->
         acc
     after
-      5000 ->
+      10000 ->
+        # Increased timeout to 10 seconds
         acc
     end
   end
