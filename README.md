@@ -21,6 +21,7 @@ A script to discover Cisco Access Points connected to Cisco switches via Power o
 - Filters devices by Cisco OUI (MAC address prefix) with 500+ known prefixes
 - Retrieves hostname via CDP (optional - will show "Unknown" if CDP unavailable)
 - Outputs results to `aps.csv` in CSV format for easy analysis
+- Detailed logging to `logs/[timestamp]/` directory (one log per switch)
 - Fault-tolerant: continues processing if individual switches fail or timeout
 
 ### Prerequisites
@@ -122,15 +123,42 @@ Switch,Interface,VLAN,Model,Hostname,MAC Address
 5. **Results Compilation**: Aggregates results from all switches
 6. **CSV Output**: Writes all discovered Cisco devices to `aps.csv` with switch, interface, VLAN, model, hostname, and MAC address
 
+### Logging
+
+The script automatically creates detailed logs in the `logs/` directory. Each run creates a timestamped subdirectory (e.g., `logs/2026-01-12T15-30-45-123456Z/`) containing one log file per switch.
+
+Log files contain:
+- All commands executed on the switch
+- Raw output from each command
+- Parsing results and filtering decisions
+- Reasons why devices were included or excluded
+- Any errors encountered
+
+To review logs after a run:
+```bash
+ls -la logs/                    # List all runs
+cat logs/[timestamp]/*.log      # View all logs from a run
+```
+
 ### Troubleshooting
 
-- **Connection failures**: Verify SSH access and credentials
+**First step: Check the logs!** The script creates detailed logs in `logs/[timestamp]/` that show exactly what commands were run and why devices were included or excluded.
+
+- **Connection failures**:
+  - Verify SSH access and credentials
+  - Check logs for connection error details
 - **No devices found**:
-  - Verify devices are powered on and drawing power (check `show power inline`)
-  - Ensure MAC address table has entries (`show mac address-table interface <interface>`)
-  - Verify MAC addresses match Cisco OUI prefixes
-- **Hostname shows "Unknown"**: CDP may not be enabled. Enable with `cdp run` and `cdp enable` on interfaces
-- **Missing VLAN or MAC data**: Check that MAC address table is populated for the interface
+  - Check logs to see the raw output from `show power inline`
+  - Verify devices are powered on and drawing power (power > 0)
+  - Ensure interfaces match x/0/x pattern (not x/1/x uplinks)
+  - Check logs to see if MAC addresses were found in MAC address table
+  - Verify MAC addresses match Cisco OUI prefixes (logs will show OUI check results)
+- **Hostname shows "Unknown"**:
+  - Check logs for CDP output
+  - CDP may not be enabled. Enable with `cdp run` and `cdp enable` on interfaces
+- **Missing VLAN or MAC data**:
+  - Check logs for `show mac address-table interface` output
+  - Verify MAC address table is populated for the interface
 - **Timeout errors**: Each switch has a 120-second timeout. Slow switches may timeout but others will continue processing
 - **Interleaved output**: Terminal messages from different switches may appear out of order due to parallel processing - this is normal
 - **Performance**: Script processes up to 10 switches concurrently. Adjust `max_concurrency` in the script if needed
