@@ -128,6 +128,15 @@ defmodule CiscoAPFinder do
 
             log(log_file, "Interactive shell started")
 
+            # Disable pagination to prevent --More-- prompts
+            log(log_file, "Disabling terminal pagination")
+            case execute_command(conn, channel, "terminal length 0") do
+              {:ok, _output} ->
+                log(log_file, "Terminal pagination disabled")
+              {:error, reason} ->
+                log(log_file, "WARNING: Failed to disable pagination: #{inspect(reason)}")
+            end
+
             aps = get_cisco_aps(conn, channel, switch, log_file)
             :ssh_connection.close(conn, channel)
             log(log_file, "SSH channel closed")
@@ -332,7 +341,7 @@ defmodule CiscoAPFinder do
     output = collect_output(conn, channel, "")
 
     # Small delay between commands to let the switch stabilize
-    Process.sleep(50)
+    Process.sleep(100)
 
     {:ok, output}
   end
@@ -346,7 +355,7 @@ defmodule CiscoAPFinder do
         # This indicates the command has completed
         if String.ends_with?(String.trim(new_acc), "#") or String.ends_with?(String.trim(new_acc), ">") do
           # Wait a tiny bit more to make sure we got everything
-          Process.sleep(10)
+          Process.sleep(50)
           new_acc
         else
           collect_output(conn, channel, new_acc)
@@ -537,7 +546,7 @@ defmodule CiscoAPFinder do
       "70EA1A", "7426AC", "74547D", "74A02F", "74A2E6", "784558", "78725D", "78BAF9",
       "7C0ECE", "7C210D", "7C6166", "7C69F6", "7C95F3", "7CAD74", "7CB21B", "801F02",
       "802AA8", "8478AC", "84802D", "84B261", "84B802", "8843E1", "885A92", "887556",
-      "88908D", "88F031", "8C604F", "8CB64F", "90E95E", "94D469", "98FC11", "9C37F4",
+      "88908D", "88F031", "8C1E80", "8C604F", "8CB64F", "90E95E", "94D469", "98FC11", "9C37F4",
       "9C4E36", "A03D6F", "A0554F", "A0E0AF", "A0ECF9", "A0F445", "A40CC3", "A45630",
       "A46C2A", "A4934C", "A80C0D", "AC4A67", "AC7E8A", "ACA016", "B000B4", "B07D47",
       "B0AA77", "B41489", "B4A4E3", "B4E9B0", "B83861", "B8621F", "B8BEBF", "BC1665",
