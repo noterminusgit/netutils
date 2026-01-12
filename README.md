@@ -28,19 +28,19 @@ A script to discover Cisco Access Points connected to Cisco switches via Power o
 
 - Elixir installed on your system
 - SSH access to Cisco switches
-- Switches listed in `switches.txt`
+- A text file containing switch IP addresses or hostnames (one per line)
 - CDP enabled (optional - only required for hostname resolution; devices will still be detected without CDP)
 
 ### Setup
 
-1. Create a `switches.txt` file with one switch IP address or hostname per line:
+1. Create a text file containing switch IP addresses or hostnames (one per line). For example, `switches.txt`:
    ```
    192.168.1.10
    192.168.1.11
    192.168.1.12
    ```
 
-   Lines starting with `#` are treated as comments.
+   **Note:** Lines starting with `#` are treated as comments and will be ignored.
 
 2. Ensure you have SSH credentials with appropriate privileges to run:
    - `show power inline`
@@ -62,9 +62,10 @@ elixir cisco_ap_finder.exs
 The script will:
 1. Prompt for your username
 2. Prompt for your password (input hidden on Unix/Linux/macOS; visible on Windows)
-3. Connect to switches in `switches.txt` (up to 10 in parallel)
-4. Discover Cisco devices on each switch
-5. Write results to `aps.csv`
+3. Prompt for the switches file name (e.g., `switches.txt`)
+4. Connect to switches from the file (up to 10 in parallel)
+5. Discover Cisco devices on each switch
+6. Write results to `aps.csv`
 
 ### Example Output
 
@@ -72,8 +73,11 @@ The script will:
 ```
 === Cisco AP Finder ===
 
+Logging to: logs/2026-01-12T15-30-45-123456Z
+
 Enter username: admin
 Enter password: [hidden]
+Enter switches file (one IP per line): switches.txt
 
 Found 3 switch(es) to scan...
 Switches: 192.168.1.10, 192.168.1.11, 192.168.1.12
