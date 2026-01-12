@@ -28,11 +28,14 @@ defmodule CiscoAPFinder do
     username = get_input("Enter username: ")
     password = get_password("Enter password: ")
 
+    # Get switches filename
+    switches_file = get_input("Enter switches file (one IP per line): ")
+
     # Read switches list
-    switches = read_switches_file("switches.txt")
+    switches = read_switches_file(switches_file)
 
     if Enum.empty?(switches) do
-      IO.puts("Error: No switches found in switches.txt")
+      IO.puts("Error: No switches found in #{switches_file}")
       System.halt(1)
     end
 
