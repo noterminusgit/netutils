@@ -18,6 +18,12 @@ defmodule CiscoAPFinder do
     # Start SSH application
     :ssh.start()
 
+    # Create logging directory with timestamp
+    timestamp = DateTime.utc_now() |> DateTime.to_iso8601() |> String.replace(~r/[:\.]/, "-")
+    log_dir = Path.join(["logs", timestamp])
+    File.mkdir_p!(log_dir)
+    IO.puts("Logging to: #{log_dir}\n")
+
     # Get credentials
     username = get_input("Enter username: ")
     password = get_password("Enter password: ")
@@ -37,7 +43,7 @@ defmodule CiscoAPFinder do
     all_aps =
       switches
       |> Task.async_stream(
-        fn switch -> find_aps_on_switch(switch, username, password) end,
+        fn switch -> find_aps_on_switch(switch, username, password, log_dir) end,
         max_concurrency: 10,
         timeout: 120_000,
         on_timeout: :kill_task
@@ -84,20 +90,37 @@ defmodule CiscoAPFinder do
     end
   end
 
-  defp find_aps_on_switch(switch, username, password) do
+  defp find_aps_on_switch(switch, username, password, log_dir) do
+    # Create log file for this switch
+    log_file = Path.join(log_dir, "#{sanitize_filename(switch)}.log")
+
+    log(log_file, "=== Starting scan of switch: #{switch} ===")
     IO.puts("Connecting to switch: #{switch}...")
 
     case connect_ssh(switch, username, password) do
       {:ok, conn} ->
-        aps = get_cisco_aps(conn, switch)
+        log(log_file, "Successfully connected to #{switch}")
+        aps = get_cisco_aps(conn, switch, log_file)
         disconnect_ssh(conn)
+        log(log_file, "Found #{length(aps)} Cisco AP(s) on #{switch}")
+        log(log_file, "=== Scan complete ===")
         IO.puts("  Found #{length(aps)} Cisco AP(s) on #{switch}")
         aps
 
       {:error, reason} ->
+        log(log_file, "ERROR: Failed to connect to #{switch}: #{inspect(reason)}")
         IO.puts("  Error connecting to #{switch}: #{inspect(reason)}")
         []
     end
+  end
+
+  defp log(log_file, message) do
+    timestamp = DateTime.utc_now() |> DateTime.to_string()
+    File.write!(log_file, "[#{timestamp}] #{message}\n", [:append])
+  end
+
+  defp sanitize_filename(name) do
+    String.replace(name, ~r/[^a-zA-Z0-9\-_\.]/, "_")
   end
 
   defp connect_ssh(host, username, password) do
@@ -128,34 +151,58 @@ defmodule CiscoAPFinder do
     :ssh.close(conn)
   end
 
-  defp get_cisco_aps(conn, switch) do
+  defp get_cisco_aps(conn, switch, log_file) do
+    log(log_file, "Executing: show power inline")
+
     # Execute "show power inline" command
     case execute_command(conn, "show power inline") do
       {:ok, power_output} ->
+        log(log_file, "Power inline output received (#{String.length(power_output)} bytes)")
+        log(log_file, "--- BEGIN show power inline ---")
+        log(log_file, power_output)
+        log(log_file, "--- END show power inline ---")
+
         # Get interfaces with powered devices and their models
         interface_models = parse_power_inline_output(power_output)
+        log(log_file, "Found #{length(interface_models)} powered local port(s): #{inspect(interface_models)}")
 
         # For each interface, get MAC address and VLAN, then check if it's a Cisco device
         Enum.map(interface_models, fn {interface, model} ->
-          get_ap_details(conn, interface, model, switch)
+          get_ap_details(conn, interface, model, switch, log_file)
         end)
         |> Enum.reject(&is_nil/1)
 
-      {:error, _reason} ->
+      {:error, reason} ->
+        log(log_file, "ERROR: Failed to execute 'show power inline': #{inspect(reason)}")
         []
     end
   end
 
-  defp get_ap_details(conn, interface, model, switch) do
+  defp get_ap_details(conn, interface, model, switch, log_file) do
+    log(log_file, "Processing interface #{interface} (model: #{model})")
+    log(log_file, "Executing: show mac address-table interface #{interface}")
+
     # Get MAC address and VLAN from MAC address table
     case execute_command(conn, "show mac address-table interface #{interface}") do
       {:ok, mac_output} ->
+        log(log_file, "--- BEGIN show mac address-table interface #{interface} ---")
+        log(log_file, mac_output)
+        log(log_file, "--- END show mac address-table interface #{interface} ---")
+
         case parse_mac_address_table(mac_output) do
           {:ok, vlan, mac_address} ->
+            log(log_file, "Parsed MAC table - VLAN: #{vlan}, MAC: #{mac_address}")
+
             # Check if it's a Cisco device by OUI
             if is_cisco_oui?(mac_address) do
+              log(log_file, "MAC #{mac_address} matches Cisco OUI - this is a Cisco device")
+
               # Get hostname from CDP
-              hostname = get_hostname_from_cdp(conn, interface)
+              log(log_file, "Executing: show cdp neighbors #{interface} detail")
+              hostname = get_hostname_from_cdp(conn, interface, log_file)
+              log(log_file, "Hostname from CDP: #{hostname || "Unknown"}")
+
+              log(log_file, "✓ Adding AP: #{hostname || "Unknown"} (#{mac_address}) on #{interface}")
 
               %AP{
                 hostname: hostname || "Unknown",
@@ -166,14 +213,17 @@ defmodule CiscoAPFinder do
                 model: model
               }
             else
+              log(log_file, "✗ MAC #{mac_address} does NOT match Cisco OUI - skipping")
               nil
             end
 
           :error ->
+            log(log_file, "✗ Failed to parse MAC address table output")
             nil
         end
 
-      {:error, _reason} ->
+      {:error, reason} ->
+        log(log_file, "ERROR: Failed to execute 'show mac address-table interface #{interface}': #{inspect(reason)}")
         nil
     end
   end
@@ -216,13 +266,24 @@ defmodule CiscoAPFinder do
     result || :error
   end
 
-  defp get_hostname_from_cdp(conn, interface) do
+  defp get_hostname_from_cdp(conn, interface, log_file) do
     # Try to get hostname from CDP neighbor detail
     case execute_command(conn, "show cdp neighbors #{interface} detail") do
       {:ok, cdp_output} ->
-        extract_cdp_field(String.split(cdp_output, "\n"), "Device ID:")
+        log(log_file, "--- BEGIN show cdp neighbors #{interface} detail ---")
+        log(log_file, cdp_output)
+        log(log_file, "--- END show cdp neighbors #{interface} detail ---")
 
-      {:error, _reason} ->
+        hostname = extract_cdp_field(String.split(cdp_output, "\n"), "Device ID:")
+        if hostname do
+          log(log_file, "Extracted hostname from CDP: #{hostname}")
+        else
+          log(log_file, "No hostname found in CDP output")
+        end
+        hostname
+
+      {:error, reason} ->
+        log(log_file, "ERROR: Failed to execute 'show cdp neighbors #{interface} detail': #{inspect(reason)}")
         nil
     end
   end
