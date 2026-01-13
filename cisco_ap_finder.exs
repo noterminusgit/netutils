@@ -174,13 +174,59 @@ defmodule CiscoAPFinder do
     username_charlist = to_charlist(username)
     password_charlist = to_charlist(password)
 
-    # SSH connection options
+    # SSH connection options with expanded cipher and key exchange support for older switches
     opts = [
       {:user, username_charlist},
       {:password, password_charlist},
       {:silently_accept_hosts, true},
       {:user_interaction, false},
-      {:connect_timeout, 10000}
+      {:connect_timeout, 10000},
+      {:preferred_algorithms, [
+        # Key exchange algorithms (KEX) - including older ones for legacy switches
+        {:kex, [
+          :'diffie-hellman-group-exchange-sha256',
+          :'diffie-hellman-group-exchange-sha1',
+          :'diffie-hellman-group14-sha256',
+          :'diffie-hellman-group14-sha1',
+          :'diffie-hellman-group16-sha512',
+          :'diffie-hellman-group18-sha512',
+          :'diffie-hellman-group1-sha1',
+          :'ecdh-sha2-nistp256',
+          :'ecdh-sha2-nistp384',
+          :'ecdh-sha2-nistp521'
+        ]},
+        # Encryption ciphers - including older ones for compatibility
+        {:cipher, [
+          :'aes128-ctr',
+          :'aes192-ctr',
+          :'aes256-ctr',
+          :'aes128-cbc',
+          :'aes192-cbc',
+          :'aes256-cbc',
+          :'3des-cbc',
+          :'aes128-gcm@openssh.com',
+          :'aes256-gcm@openssh.com'
+        ]},
+        # MAC algorithms - including older ones
+        {:mac, [
+          :'hmac-sha2-256',
+          :'hmac-sha2-512',
+          :'hmac-sha1',
+          :'hmac-sha1-96',
+          :'hmac-md5',
+          :'hmac-md5-96'
+        ]},
+        # Public key algorithms for host keys
+        {:public_key, [
+          :'ssh-rsa',
+          :'rsa-sha2-256',
+          :'rsa-sha2-512',
+          :'ecdsa-sha2-nistp256',
+          :'ecdsa-sha2-nistp384',
+          :'ecdsa-sha2-nistp521',
+          :'ssh-dss'
+        ]}
+      ]}
     ]
 
     case :ssh.connect(host_charlist, 22, opts) do
