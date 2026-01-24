@@ -7,7 +7,7 @@ A script to discover Cisco Access Points connected to Cisco switches via Power o
 
 ### Description
 
-`cisco_ap_finder.exs` connects to a list of Cisco switches via SSH, runs the `show power inline` command to identify powered devices on local ports, and then uses the MAC address table to retrieve VLAN and MAC address information. It matches devices based on Cisco OUI (MAC address prefix) to ensure only Cisco equipment is included. CDP (Cisco Discovery Protocol) is used for hostname resolution.
+`cisco_ap_finder/cisco_ap_finder.exs` connects to a list of Cisco switches via SSH, runs the `show power inline` command to identify powered devices on local ports, and then uses the MAC address table to retrieve VLAN and MAC address information. It matches devices based on Cisco OUI (MAC address prefix) to ensure only Cisco equipment is included. CDP (Cisco Discovery Protocol) is used for hostname resolution.
 
 ### Features
 
@@ -33,29 +33,36 @@ A script to discover Cisco Access Points connected to Cisco switches via Power o
 
 ### Setup
 
-1. Create a text file containing switch IP addresses or hostnames (one per line). For example, `switches.txt`:
+1. Navigate to the script directory:
+   ```bash
+   cd cisco_ap_finder
+   ```
+
+2. Create a text file containing switch IP addresses or hostnames (one per line). For example, `switches.txt`:
    ```
    192.168.1.10
    192.168.1.11
    192.168.1.12
    ```
 
-   **Note:** Lines starting with `#` are treated as comments and will be ignored.
+   **Note:** Lines starting with `#` are treated as comments and will be ignored. A sample `switches.txt` file is included.
 
-2. Ensure you have SSH credentials with appropriate privileges to run:
+3. Ensure you have SSH credentials with appropriate privileges to run:
    - `show power inline`
    - `show mac address-table interface`
    - `show cdp neighbors detail` (for hostname resolution)
 
 ### Usage
 
-Run the script:
+Navigate to the script directory and run:
 ```bash
+cd cisco_ap_finder
 ./cisco_ap_finder.exs
 ```
 
 Or:
 ```bash
+cd cisco_ap_finder
 elixir cisco_ap_finder.exs
 ```
 

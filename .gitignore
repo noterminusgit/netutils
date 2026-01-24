@@ -6,10 +6,12 @@
 erl_crash.dump
 *.ez
 *.beam
-*.txt
 /config/*.secret.exs
 .elixir_ls/
 
-# Output files
-aps.csv
-logs/
+# Cisco AP Finder generated files
+cisco_ap_finder/aps.csv
+cisco_ap_finder/logs/
+
+# Keep input configuration files tracked
+!cisco_ap_finder/switches.txt
