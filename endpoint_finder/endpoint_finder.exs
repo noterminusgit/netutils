@@ -66,7 +66,7 @@ defmodule EndpointFinder do
       switches
       |> Task.async_stream(
         fn switch -> process_switch(switch, username, password, log_dir, errors_agent) end,
-        max_concurrency: 10,
+        max_concurrency: 500,
         timeout: 120_000,
         on_timeout: :kill_task
       )

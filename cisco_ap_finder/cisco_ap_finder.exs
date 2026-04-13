@@ -53,7 +53,7 @@ defmodule CiscoAPFinder do
       switches
       |> Task.async_stream(
         fn switch -> find_aps_on_switch(switch, username, password, log_dir, errors_agent) end,
-        max_concurrency: 10,
+        max_concurrency: 500,
         timeout: 120_000,
         on_timeout: :kill_task
       )

@@ -183,7 +183,7 @@ For scripts that connect to Cisco network devices via SSH:
 For scripts that process multiple devices:
 
 - Use Elixir's `Task.async_stream/3` for concurrent processing
-- Set reasonable `max_concurrency` (default: 10 concurrent connections)
+- Set reasonable `max_concurrency` (default: 500 concurrent connections)
 - Include timeout handling for slow devices
 - Continue processing even if individual devices fail
 
