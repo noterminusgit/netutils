@@ -68,15 +68,16 @@ Each script directory should contain:
 
 ### 3. Git Ignore Patterns
 
-Generated files should be ignored:
+The root `.gitignore` uses global patterns to ignore all generated and working files:
 ```gitignore
-# Generated output files
 *.csv
+*.txt
 logs/
-output/
 ```
 
-Add script-specific patterns to `.gitignore` as needed.
+**Important:** `*.txt` files (e.g., `switches.txt`) are intentionally ignored so that users' working device lists with real IPs/hostnames don't create git conflicts. Sample `switches.txt` files are committed once when a script is first added, then left ignored. Do **not** remove `*.txt` from `.gitignore` or add per-script negation patterns (`!script/switches.txt`) — this defeats the purpose.
+
+To commit a new or updated `.txt` file despite the ignore rule, use `git add -f <path>`.
 
 ## Adding New Scripts
 
@@ -100,15 +101,14 @@ chmod +x [script_name].exs
 touch config.txt  # or other relevant files
 ```
 
-### Step 3: Update .gitignore
+### Step 3: Commit Input Files
 
-Add any generated output patterns to the root `.gitignore`:
-```gitignore
-# [Script Name] generated files
-[script_name]/*.csv
-[script_name]/logs/
-[script_name]/output/
+The root `.gitignore` globally ignores `*.csv`, `*.txt`, and `logs/`, so generated output is already covered. To commit sample input files (e.g., `switches.txt`), force-add them:
+```bash
+git add -f [script_name]/switches.txt
 ```
+
+Do **not** add per-script negation patterns to `.gitignore` — the global `*.txt` ignore prevents users' working device lists from causing git conflicts.
 
 ### Step 4: Create Script-Specific Documentation
 
