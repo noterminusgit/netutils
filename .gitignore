@@ -15,3 +15,11 @@ cisco_ap_finder/logs/
 
 # Keep input configuration files tracked
 !cisco_ap_finder/switches.txt
+
+# Endpoint Finder generated files
+endpoint_finder/endpoints.csv
+endpoint_finder/cdp_neighbors.csv
+endpoint_finder/logs/
+
+# Keep input configuration files tracked
+!endpoint_finder/switches.txt

@@ -10,19 +10,29 @@ Each utility script in this repository follows a **subdirectory-per-script** pat
 
 ```
 netutils/
-├── README.md                    # Main repository documentation
+├── README.md                    # Brief overview of each script (not detailed docs)
 ├── CLAUDE.md                    # This file - architecture guide
 ├── LICENSE
 ├── .gitignore
 │
 ├── cisco_ap_finder/             # Cisco AP Finder utility
 │   ├── cisco_ap_finder.exs      # Main script
+│   ├── README.md                # Detailed documentation for this script
 │   ├── switches.txt             # Input data file
 │   ├── aps.csv                  # Output file (generated, not tracked)
 │   └── logs/                    # Log directory (generated, not tracked)
 │
+├── endpoint_finder/             # Endpoint Finder utility
+│   ├── endpoint_finder.exs      # Main script
+│   ├── README.md                # Detailed documentation for this script
+│   ├── switches.txt             # Input data file
+│   ├── endpoints.csv            # Output file (generated, not tracked)
+│   ├── cdp_neighbors.csv        # Output file (generated, not tracked)
+│   └── logs/                    # Log directory (generated, not tracked)
+│
 └── [future_script]/             # Future utility scripts follow same pattern
     ├── [future_script].exs      # Main script
+    ├── README.md                # Detailed documentation for this script
     ├── [config/input files]     # Script-specific files
     └── [output directories]     # Generated files (not tracked)
 ```
@@ -52,8 +62,8 @@ cisco_ap_finder/
 Each script directory should contain:
 
 - **Main script file**: Named identically to the directory (e.g., `cisco_ap_finder.exs`)
+- **README.md**: Detailed documentation with description, features, prerequisites, setup, usage, example output, how it works, logging, and troubleshooting
 - **Input files**: Configuration files, data files, or templates (e.g., `switches.txt`)
-- **Documentation**: Optional README.md for complex scripts with detailed usage
 - **Output directories**: Generated at runtime, excluded from git (e.g., `logs/`, `*.csv`)
 
 ### 3. Git Ignore Patterns
@@ -100,27 +110,27 @@ Add any generated output patterns to the root `.gitignore`:
 [script_name]/output/
 ```
 
-### Step 4: Update Root README.md
+### Step 4: Create Script-Specific Documentation
 
-Add a section to the main README.md documenting the new script:
+Create `[script_name]/README.md` with detailed documentation including: description, features, prerequisites, setup, usage, example output, how it works, logging, and troubleshooting. This is the primary documentation for the script.
+
+### Step 5: Update Root README.md
+
+Add a **brief** entry to the root `README.md`. The root README is an overview/index only — keep each script's entry to a short description paragraph and a usage command. Link to the script's own README for details:
 ```markdown
 ## [Script Name]
 
 Brief description of what the script does.
 
-### Usage
-
 ```bash
 cd [script_name]
-./[script_name].exs
+elixir [script_name].exs
 ```
 
-See `[script_name]/README.md` for detailed documentation.
+See [`[script_name]/README.md`]([script_name]/README.md) for detailed documentation.
 ```
 
-### Step 5: Create Script-Specific Documentation (Optional)
-
-For complex scripts, create `[script_name]/README.md` with detailed usage, examples, and troubleshooting.
+**Do not** put detailed features, setup, examples, or troubleshooting in the root README.
 
 ## Development Guidelines
 
@@ -139,7 +149,7 @@ All scripts should follow these conventions:
 For scripts that connect to Cisco network devices via SSH:
 
 1. **Algorithm Support**: Include comprehensive cipher and key exchange support
-   - Reference: `cisco_ap_finder/cisco_ap_finder.exs:177-237`
+   - Reference: `endpoint_finder/endpoint_finder.exs:652-701`
    - Support both modern (IOS-XE 17.9+) and legacy algorithms
    - Order algorithms by security preference (modern first, legacy last)
 

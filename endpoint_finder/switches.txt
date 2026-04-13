@@ -1,0 +1,5 @@
+# List of edge switches (one per line)
+# Format: IP address or hostname
+192.168.1.10
+192.168.1.11
+192.168.1.12
