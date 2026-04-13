@@ -546,7 +546,8 @@ defmodule CiscoAPFinder do
   end
 
   defp display_results(aps, run_time) do
-    output_file = "aps.csv"
+    file_timestamp = String.replace(run_time, ~r/[:\.]/, "-")
+    output_file = "#{file_timestamp}-aps.csv"
 
     IO.puts("\n" <> String.duplicate("=", 80))
     IO.puts("RESULTS: Found #{length(aps)} Cisco AP(s) total")
@@ -557,7 +558,7 @@ defmodule CiscoAPFinder do
       IO.puts("No output file created.")
     else
       # Write to CSV file
-      write_csv_file(output_file, aps, run_time)
+      write_csv_file(output_file, aps)
       IO.puts("Results written to: #{output_file}")
       IO.puts("\nSummary by switch:")
 
@@ -569,7 +570,7 @@ defmodule CiscoAPFinder do
     end
   end
 
-  defp write_csv_file(filename, aps, run_time) do
+  defp write_csv_file(filename, aps) do
     # Create CSV content
     csv_lines = [
       # Header
@@ -583,7 +584,7 @@ defmodule CiscoAPFinder do
       end)
     ]
 
-    content = "# Run: #{run_time}\n" <> Enum.join(csv_lines, "\n") <> "\n"
+    content = Enum.join(csv_lines, "\n") <> "\n"
 
     case File.write(filename, content) do
       :ok ->

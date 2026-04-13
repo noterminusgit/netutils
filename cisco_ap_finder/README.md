@@ -17,7 +17,7 @@ A script to discover Cisco Access Points connected to Cisco switches via Power o
 - Retrieves MAC address and VLAN from MAC address table
 - Filters devices by Cisco OUI (MAC address prefix) with 500+ known prefixes
 - Retrieves hostname via CDP (optional - will show "Unknown" if CDP unavailable)
-- Outputs results to `aps.csv` in CSV format for easy analysis
+- Outputs timestamped results to `<timestamp>-aps.csv` in CSV format for easy analysis
 - Detailed logging to `logs/[timestamp]/` directory (one log per switch)
 - Fault-tolerant: continues processing if individual switches fail or timeout
 
@@ -68,7 +68,7 @@ The script will:
 3. Prompt for the switches file name (e.g., `switches.txt`)
 4. Connect to switches from the file (up to 10 in parallel)
 5. Discover Cisco devices on each switch
-6. Write results to `aps.csv`
+6. Write results to `<timestamp>-aps.csv`
 
 ## Example Output
 
@@ -96,7 +96,7 @@ Connecting to switch: 192.168.1.12...
 RESULTS: Found 3 Cisco AP(s) total
 ================================================================================
 
-Results written to: aps.csv
+Results written to: 2026-01-12T15-30-45Z-aps.csv
 
 Summary by switch:
   192.168.1.10: 2 AP(s)
@@ -105,9 +105,8 @@ Summary by switch:
 
 *Note: With parallel processing, connection messages may appear in different orders.*
 
-**CSV File Output (aps.csv):**
+**CSV File Output (2026-01-12T15-30-45Z-aps.csv):**
 ```csv
-# Run: 2026-01-12T15:30:45Z
 Switch,Interface,VLAN,Model,Hostname,MAC Address
 192.168.1.10,Gi1/0/1,31,C9105AXW-B,AP-Floor1-East,a1:b2:c3:d4:e5:f6
 192.168.1.10,Gi1/0/5,40,AIR-AP2802I-B-K9,AP-Floor1-West,a1:b2:c3:d4:e5:f7
@@ -129,7 +128,7 @@ Switch,Interface,VLAN,Model,Hostname,MAC Address
    - Validates MAC address against Cisco OUI prefixes (500+ known prefixes)
    - If Cisco device detected, retrieves hostname from `show cdp neighbors <interface> detail`
 5. **Results Compilation**: Aggregates results from all switches
-6. **CSV Output**: Writes all discovered Cisco devices to `aps.csv`
+6. **CSV Output**: Writes all discovered Cisco devices to `<timestamp>-aps.csv`
 
 ## Logging
 

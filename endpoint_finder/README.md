@@ -25,7 +25,7 @@ For each endpoint, the script collects:
 - Retrieves 5-minute interface rates (input/output bytes/sec)
 - Normalizes interface names across different Cisco CLI output formats
 - Filters out multicast MACs, CPU entries, Port-channels, and VLAN interfaces
-- Outputs endpoints to `endpoints.csv` and CDP neighbors to `cdp_neighbors.csv`
+- Outputs timestamped CSV files: `<timestamp>-endpoints.csv` and `<timestamp>-cdp_neighbors.csv`
 - Optional reconciliation with a previous scan to show only still-connected devices
 - Detailed logging to `logs/[timestamp]/` directory (one log per switch)
 - Fault-tolerant: continues processing if individual switches fail or timeout
@@ -83,8 +83,8 @@ The script will:
 4. Prompt for a previous CSV to reconcile against (optional - press Enter to skip)
 5. Connect to switches (up to 10 in parallel)
 6. Discover endpoints and CDP neighbors on each switch
-7. Write results to `endpoints.csv` and `cdp_neighbors.csv`
-8. If reconciling, write `endpoints_still_connected.csv` with only the devices found in both scans
+7. Write results to `<timestamp>-endpoints.csv` and `<timestamp>-cdp_neighbors.csv`
+8. If reconciling, write `<timestamp>-endpoints_still_connected.csv` with only the devices found in both scans
 
 ## Example Output
 
@@ -97,8 +97,8 @@ Logging to: logs/2026-01-15T10-30-45-123456Z
 Enter username: admin
 Enter password: [hidden]
 Enter switches file (one IP per line): switches.txt
-Reconcile with previous CSV (leave blank to skip): endpoints.csv
-Loaded 35 MAC(s) from previous scan: endpoints.csv
+Reconcile with previous CSV (leave blank to skip): 2026-01-14T08-00-00Z-endpoints.csv
+Loaded 35 MAC(s) from previous scan: 2026-01-14T08-00-00Z-endpoints.csv
 
 Found 3 switch(es) to scan...
 Switches: 192.168.1.10, 192.168.1.11, 192.168.1.12
@@ -114,7 +114,7 @@ Connecting to switch: 192.168.1.12...
 RESULTS: Found 35 endpoint(s) and 6 CDP neighbor(s) total
 ================================================================================
 
-Endpoints written to: endpoints.csv
+Endpoints written to: 2026-01-15T10-30-45Z-endpoints.csv
 
 Endpoints by switch:
   192.168.1.10: 15 endpoint(s)
@@ -125,9 +125,9 @@ Endpoints by switch:
 Still connected: 30 endpoint(s)
 New (not in previous):  5 endpoint(s)
 Disconnected (in previous, not now): 5 endpoint(s)
-Reconciled output written to: endpoints_still_connected.csv
+Reconciled output written to: 2026-01-15T10-30-45Z-endpoints_still_connected.csv
 
-CDP neighbors written to: cdp_neighbors.csv
+CDP neighbors written to: 2026-01-15T10-30-45Z-cdp_neighbors.csv
 
 CDP neighbors by switch:
   192.168.1.10: 2 neighbor(s)
@@ -137,18 +137,16 @@ CDP neighbors by switch:
 
 *Note: With parallel processing, connection messages may appear in different orders.*
 
-**Endpoints CSV (endpoints.csv):**
+**Endpoints CSV (2026-01-15T10-30-45Z-endpoints.csv):**
 ```csv
-# Run: 2026-01-15T10:30:45Z
 MAC Address,LLDP Name,Switch Hostname,Switch IP,Port,VLAN,Input (bytes/sec),Output (bytes/sec)
 a1b2.c3d4.e5f6,printer-floor2,SWITCH-01,192.168.1.10,Gi1/0/1,10,125,62
 f6e5.d4c3.b2a1,N/A,SWITCH-01,192.168.1.10,Gi1/0/5,20,1250,625
 1234.5678.9abc,phone-desk42,SWITCH-02,192.168.1.11,Gi1/0/8,30,3750,1875
 ```
 
-**CDP Neighbors CSV (cdp_neighbors.csv):**
+**CDP Neighbors CSV (2026-01-15T10-30-45Z-cdp_neighbors.csv):**
 ```csv
-# Run: 2026-01-15T10:30:45Z
 Switch Hostname,Switch IP,Neighbor Device ID,Neighbor IP,Local Port,Remote Port,Platform,Capabilities
 SWITCH-01,192.168.1.10,SWITCH-02.domain.com,10.0.0.2,Gi1/0/25,Gi1/0/1,cisco WS-C3750-48P,Router Switch IGMP
 SWITCH-01,192.168.1.10,CORE-SW.domain.com,10.0.0.1,Te1/1/1,Te1/0/1,cisco C9300-48P,Router Switch IGMP
@@ -169,16 +167,16 @@ SWITCH-02,192.168.1.11,SWITCH-01.domain.com,10.0.0.3,Gi1/0/25,Gi1/0/25,cisco C92
    - For each unique endpoint port, runs `show interface <port>` to get traffic statistics
    - Builds endpoint records with all collected data
 5. **Results Compilation**: Aggregates results from all switches
-6. **CSV Output**: Writes endpoints to `endpoints.csv` and CDP neighbors to `cdp_neighbors.csv`
-7. **Reconciliation** (optional): If a previous CSV was provided, filters current results to only endpoints whose MAC addresses appeared in the previous scan, and writes to `endpoints_still_connected.csv`
+6. **CSV Output**: Writes endpoints to `<timestamp>-endpoints.csv` and CDP neighbors to `<timestamp>-cdp_neighbors.csv`
+7. **Reconciliation** (optional): If a previous CSV was provided, filters current results to only endpoints whose MAC addresses appeared in the previous scan, and writes to `<timestamp>-endpoints_still_connected.csv`
 
 ## Reconciliation
 
-To find which devices are still connected since a previous scan, provide the path to a previous `endpoints.csv` when prompted. The script will:
+To find which devices are still connected since a previous scan, provide the path to a previous endpoints CSV when prompted. The script will:
 
-- Run a full scan as normal and write `endpoints.csv`
+- Run a full scan as normal and write `<timestamp>-endpoints.csv`
 - Compare MAC addresses between the previous and current scan
-- Write `endpoints_still_connected.csv` containing only endpoints present in both scans (with current data)
+- Write `<timestamp>-endpoints_still_connected.csv` containing only endpoints present in both scans (with current data)
 - Report counts of still-connected, new, and disconnected endpoints
 
 This is useful for tracking device churn, verifying migrations, or confirming that specific devices remain online.
