@@ -189,8 +189,9 @@ defmodule CiscoAPFinder do
 
   defp write_error_log([], _run_time), do: :ok
   defp write_error_log(errors, run_time) do
+    File.mkdir_p!("output")
     file_timestamp = String.replace(run_time, ~r/[:\.]/, "-")
-    filename = "#{file_timestamp}-errors.log"
+    filename = Path.join("output", "#{file_timestamp}-errors.log")
     content = Enum.join(errors, "\n") <> "\n"
 
     case File.write(filename, content) do
@@ -607,7 +608,8 @@ defmodule CiscoAPFinder do
 
   defp display_results(aps, run_time) do
     file_timestamp = String.replace(run_time, ~r/[:\.]/, "-")
-    output_file = "#{file_timestamp}-aps.csv"
+    File.mkdir_p!("output")
+    output_file = Path.join("output", "#{file_timestamp}-aps.csv")
 
     IO.puts("\n" <> String.duplicate("=", 80))
     IO.puts("RESULTS: Found #{length(aps)} Cisco AP(s) total")

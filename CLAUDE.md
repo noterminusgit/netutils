@@ -19,15 +19,14 @@ netutils/
 │   ├── cisco_ap_finder.exs      # Main script
 │   ├── README.md                # Detailed documentation for this script
 │   ├── switches.txt             # Input data file
-│   ├── aps.csv                  # Output file (generated, not tracked)
+│   ├── output/                  # Output directory (generated, not tracked)
 │   └── logs/                    # Log directory (generated, not tracked)
 │
 ├── endpoint_finder/             # Endpoint Finder utility
 │   ├── endpoint_finder.exs      # Main script
 │   ├── README.md                # Detailed documentation for this script
 │   ├── switches.txt             # Input data file
-│   ├── endpoints.csv            # Output file (generated, not tracked)
-│   ├── cdp_neighbors.csv        # Output file (generated, not tracked)
+│   ├── output/                  # Output directory (generated, not tracked)
 │   └── logs/                    # Log directory (generated, not tracked)
 │
 └── [future_script]/             # Future utility scripts follow same pattern
@@ -54,7 +53,8 @@ netutils/
 cisco_ap_finder/
 ├── cisco_ap_finder.exs    # The script itself
 ├── switches.txt           # Input configuration
-└── logs/                  # Output (git-ignored)
+├── output/                # CSV/log output (git-ignored)
+└── logs/                  # Detailed per-switch logs (git-ignored)
 ```
 
 ### 2. File Organization Within Script Directories

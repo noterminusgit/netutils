@@ -895,8 +895,9 @@ defmodule EndpointFinder do
 
   defp write_error_log([], _run_time), do: :ok
   defp write_error_log(errors, run_time) do
+    File.mkdir_p!("output")
     file_timestamp = String.replace(run_time, ~r/[:\.]/, "-")
-    filename = "#{file_timestamp}-errors.log"
+    filename = Path.join("output", "#{file_timestamp}-errors.log")
     content = Enum.join(errors, "\n") <> "\n"
 
     case File.write(filename, content) do
@@ -915,9 +916,10 @@ defmodule EndpointFinder do
 
   defp display_results(endpoints, cdp_neighbors, previous_macs, run_time) do
     file_timestamp = String.replace(run_time, ~r/[:\.]/, "-")
-    endpoints_file = "#{file_timestamp}-endpoints.csv"
-    cdp_file = "#{file_timestamp}-cdp_neighbors.csv"
-    reconciled_file = "#{file_timestamp}-endpoints_still_connected.csv"
+    File.mkdir_p!("output")
+    endpoints_file = Path.join("output", "#{file_timestamp}-endpoints.csv")
+    cdp_file = Path.join("output", "#{file_timestamp}-cdp_neighbors.csv")
+    reconciled_file = Path.join("output", "#{file_timestamp}-endpoints_still_connected.csv")
 
     IO.puts("\n" <> String.duplicate("=", 80))
     IO.puts("RESULTS: Found #{length(endpoints)} endpoint(s) and #{length(cdp_neighbors)} CDP neighbor(s) total")
