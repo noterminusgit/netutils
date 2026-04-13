@@ -107,6 +107,7 @@ Summary by switch:
 
 **CSV File Output (aps.csv):**
 ```csv
+# Run: 2026-01-12T15:30:45Z
 Switch,Interface,VLAN,Model,Hostname,MAC Address
 192.168.1.10,Gi1/0/1,31,C9105AXW-B,AP-Floor1-East,a1:b2:c3:d4:e5:f6
 192.168.1.10,Gi1/0/5,40,AIR-AP2802I-B-K9,AP-Floor1-West,a1:b2:c3:d4:e5:f7

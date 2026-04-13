@@ -18,8 +18,11 @@ defmodule CiscoAPFinder do
     # Start SSH application
     :ssh.start()
 
+    # Capture run timestamp (ISO 8601 to seconds) for CSV headers
+    run_time = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+
     # Create logging directory with timestamp
-    timestamp = DateTime.utc_now() |> DateTime.to_iso8601() |> String.replace(~r/[:\.]/, "-")
+    timestamp = String.replace(run_time, ~r/[:\.]/, "-")
     log_dir = Path.join(["logs", timestamp])
     File.mkdir_p!(log_dir)
     IO.puts("Logging to: #{log_dir}\n")
@@ -57,7 +60,7 @@ defmodule CiscoAPFinder do
       end)
 
     # Display results
-    display_results(all_aps)
+    display_results(all_aps, run_time)
   end
 
   defp get_input(prompt) do
@@ -542,7 +545,7 @@ defmodule CiscoAPFinder do
     oui in cisco_ouis
   end
 
-  defp display_results(aps) do
+  defp display_results(aps, run_time) do
     output_file = "aps.csv"
 
     IO.puts("\n" <> String.duplicate("=", 80))
@@ -554,7 +557,7 @@ defmodule CiscoAPFinder do
       IO.puts("No output file created.")
     else
       # Write to CSV file
-      write_csv_file(output_file, aps)
+      write_csv_file(output_file, aps, run_time)
       IO.puts("Results written to: #{output_file}")
       IO.puts("\nSummary by switch:")
 
@@ -566,7 +569,7 @@ defmodule CiscoAPFinder do
     end
   end
 
-  defp write_csv_file(filename, aps) do
+  defp write_csv_file(filename, aps, run_time) do
     # Create CSV content
     csv_lines = [
       # Header
@@ -580,7 +583,7 @@ defmodule CiscoAPFinder do
       end)
     ]
 
-    content = Enum.join(csv_lines, "\n") <> "\n"
+    content = "# Run: #{run_time}\n" <> Enum.join(csv_lines, "\n") <> "\n"
 
     case File.write(filename, content) do
       :ok ->

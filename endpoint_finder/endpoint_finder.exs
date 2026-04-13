@@ -27,9 +27,12 @@ defmodule EndpointFinder do
     # Start SSH application
     :ssh.start()
 
+    # Capture run timestamp (ISO 8601 to seconds) for CSV headers
+    run_time = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+
     # Create logging directory with timestamp
-    timestamp = DateTime.utc_now() |> DateTime.to_iso8601() |> String.replace(~r/[:\.]/, "-")
-    log_dir = Path.join(["logs", timestamp])
+    log_timestamp = String.replace(run_time, ~r/[:\.]/, "-")
+    log_dir = Path.join(["logs", log_timestamp])
     File.mkdir_p!(log_dir)
     IO.puts("Logging to: #{log_dir}\n")
 
@@ -73,7 +76,7 @@ defmodule EndpointFinder do
     all_cdp_neighbors = Enum.flat_map(results, fn {_endpoints, cdp} -> cdp end)
 
     # Display results and write CSVs
-    display_results(all_endpoints, all_cdp_neighbors, previous_macs)
+    display_results(all_endpoints, all_cdp_neighbors, previous_macs, run_time)
   end
 
   # ---------------------------------------------------------------------------
@@ -117,8 +120,8 @@ defmodule EndpointFinder do
         macs =
           content
           |> String.split("\n")
+          |> Enum.reject(&(&1 == "" or String.starts_with?(&1, "#")))
           |> Enum.drop(1)  # skip header
-          |> Enum.reject(&(&1 == ""))
           |> Enum.map(fn line ->
             line |> String.split(",") |> List.first() |> String.trim() |> String.downcase()
           end)
@@ -820,7 +823,7 @@ defmodule EndpointFinder do
   # Results and CSV output
   # ---------------------------------------------------------------------------
 
-  defp display_results(endpoints, cdp_neighbors, previous_macs) do
+  defp display_results(endpoints, cdp_neighbors, previous_macs, run_time) do
     endpoints_file = "endpoints.csv"
     cdp_file = "cdp_neighbors.csv"
     reconciled_file = "endpoints_still_connected.csv"
@@ -832,7 +835,7 @@ defmodule EndpointFinder do
     if Enum.empty?(endpoints) do
       IO.puts("No endpoints found.")
     else
-      write_endpoints_csv(endpoints_file, endpoints)
+      write_endpoints_csv(endpoints_file, endpoints, run_time)
       IO.puts("Endpoints written to: #{endpoints_file}")
       IO.puts("\nEndpoints by switch:")
 
@@ -849,7 +852,7 @@ defmodule EndpointFinder do
 
         disconnected_count = MapSet.size(previous_macs) - length(still_connected)
 
-        write_endpoints_csv(reconciled_file, still_connected)
+        write_endpoints_csv(reconciled_file, still_connected, run_time)
         IO.puts("\n--- Reconciliation ---")
         IO.puts("Still connected: #{length(still_connected)} endpoint(s)")
         IO.puts("New (not in previous):  #{length(endpoints) - length(still_connected)} endpoint(s)")
@@ -861,7 +864,7 @@ defmodule EndpointFinder do
     if Enum.empty?(cdp_neighbors) do
       IO.puts("\nNo CDP neighbors found.")
     else
-      write_cdp_csv(cdp_file, cdp_neighbors)
+      write_cdp_csv(cdp_file, cdp_neighbors, run_time)
       IO.puts("\nCDP neighbors written to: #{cdp_file}")
       IO.puts("\nCDP neighbors by switch:")
 
@@ -872,7 +875,7 @@ defmodule EndpointFinder do
     end
   end
 
-  defp write_endpoints_csv(filename, endpoints) do
+  defp write_endpoints_csv(filename, endpoints, run_time) do
     csv_lines = [
       "MAC Address,LLDP Name,Switch Hostname,Switch IP,Port,VLAN,Input (bytes/sec),Output (bytes/sec)"
       |
@@ -892,10 +895,10 @@ defmodule EndpointFinder do
       end)
     ]
 
-    write_csv(filename, csv_lines)
+    write_csv(filename, csv_lines, run_time)
   end
 
-  defp write_cdp_csv(filename, cdp_neighbors) do
+  defp write_cdp_csv(filename, cdp_neighbors, run_time) do
     csv_lines = [
       "Switch Hostname,Switch IP,Neighbor Device ID,Neighbor IP,Local Port,Remote Port,Platform,Capabilities"
       |
@@ -915,11 +918,11 @@ defmodule EndpointFinder do
       end)
     ]
 
-    write_csv(filename, csv_lines)
+    write_csv(filename, csv_lines, run_time)
   end
 
-  defp write_csv(filename, csv_lines) do
-    content = Enum.join(csv_lines, "\n") <> "\n"
+  defp write_csv(filename, csv_lines, run_time) do
+    content = "# Run: #{run_time}\n" <> Enum.join(csv_lines, "\n") <> "\n"
 
     case File.write(filename, content) do
       :ok -> :ok
