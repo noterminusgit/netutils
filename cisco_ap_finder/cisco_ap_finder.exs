@@ -254,22 +254,50 @@ defmodule CiscoAPFinder do
     ]}
   ]
 
-  # Filter desired algorithms to only those the local OTP actually supports.
-  # This avoids :eoptions errors when OTP drops legacy algorithms.
-  defp supported_algorithms do
-    supported = :ssh.default_algorithms()
+  # Build algorithm options that include both modern and legacy algorithms.
+  # OTP 26+ removed SHA-1 kex from defaults but still supports them.
+  # We use modify_algorithms with :append to re-add legacy algorithms
+  # that OTP dropped from its defaults, ensuring connectivity to older switches.
+  defp algorithm_options do
+    defaults = :ssh.default_algorithms()
 
-    Enum.map(@desired_algorithms, fn {type, desired} ->
-      supported_for_type =
-        case Keyword.get(supported, type) do
-          [{:client2server, c2s} | _] -> MapSet.new(c2s)
-          list when is_list(list) -> MapSet.new(list)
-          _ -> MapSet.new()
-        end
+    # For each type, find which desired algorithms are already in defaults
+    # and which need to be appended back
+    append_list =
+      Enum.map(@desired_algorithms, fn {type, desired} ->
+        default_for_type =
+          case Keyword.get(defaults, type) do
+            [{:client2server, c2s} | _] -> MapSet.new(c2s)
+            list when is_list(list) -> MapSet.new(list)
+            _ -> MapSet.new()
+          end
 
-      filtered = Enum.filter(desired, &MapSet.member?(supported_for_type, &1))
-      {type, filtered}
-    end)
+        missing = Enum.reject(desired, &MapSet.member?(default_for_type, &1))
+        {type, missing}
+      end)
+      |> Enum.reject(fn {_type, list} -> list == [] end)
+
+    # preferred_algorithms sets the order for algorithms already in defaults
+    preferred =
+      Enum.map(@desired_algorithms, fn {type, desired} ->
+        default_for_type =
+          case Keyword.get(defaults, type) do
+            [{:client2server, c2s} | _] -> MapSet.new(c2s)
+            list when is_list(list) -> MapSet.new(list)
+            _ -> MapSet.new()
+          end
+
+        in_defaults = Enum.filter(desired, &MapSet.member?(default_for_type, &1))
+        {type, in_defaults}
+      end)
+
+    opts = [{:preferred_algorithms, preferred}]
+
+    if append_list != [] do
+      [{:modify_algorithms, [{:append, append_list}]} | opts]
+    else
+      opts
+    end
   end
 
   defp connect_ssh(host, username, password) do
@@ -283,9 +311,8 @@ defmodule CiscoAPFinder do
       {:silently_accept_hosts, true},
       {:user_interaction, false},
       {:quiet_mode, true},
-      {:connect_timeout, 10000},
-      {:preferred_algorithms, supported_algorithms()}
-    ]
+      {:connect_timeout, 10000}
+    ] ++ algorithm_options()
 
     case :ssh.connect(host_charlist, 22, opts) do
       {:ok, conn} -> {:ok, conn}

@@ -149,9 +149,9 @@ All scripts should follow these conventions:
 For scripts that connect to Cisco network devices via SSH:
 
 1. **Algorithm Support**: Include comprehensive cipher and key exchange support
-   - Reference: `endpoint_finder/endpoint_finder.exs` `@desired_algorithms` and `supported_algorithms/0`
+   - Reference: `endpoint_finder/endpoint_finder.exs` `@desired_algorithms` and `algorithm_options/0`
    - List all desired algorithms (modern first, legacy last) in a module attribute
-   - **Filter at runtime** against `:ssh.default_algorithms()` to only use algorithms the local OTP supports — this prevents `:eoptions` errors across different Erlang/OTP versions
+   - **Re-add legacy algorithms at runtime** — OTP 26+ removed SHA-1 key exchange from defaults but still supports it. Use `preferred_algorithms` for ordering algorithms already in defaults, and `modify_algorithms: [{:append, [...]}]` to re-enable legacy algorithms that OTP dropped. See `algorithm_options/0` in existing scripts.
 
 2. **Algorithm Lists** (based on Cisco IOS-XE 17.9 specification):
    - **KEX**: curve25519-sha256@libssh.org, ECDH variants, DH groups
