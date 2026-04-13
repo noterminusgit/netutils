@@ -13,6 +13,7 @@ For each endpoint, the script collects:
 - **Switch IP** address used for the SSH connection
 - **Port** the endpoint is connected to
 - **VLAN** the endpoint is on
+- **Description** from the interface configuration (if set)
 - **Input/Output** rate (bytes/sec) from the 5-minute interface rate counters
 
 ## Features
@@ -139,10 +140,10 @@ CDP neighbors by switch:
 
 **Endpoints CSV (2026-01-15T10-30-45Z-endpoints.csv):**
 ```csv
-MAC Address,LLDP Name,Switch Hostname,Switch IP,Port,VLAN,Input (bytes/sec),Output (bytes/sec)
-a1b2.c3d4.e5f6,printer-floor2,SWITCH-01,192.168.1.10,Gi1/0/1,10,125,62
-f6e5.d4c3.b2a1,N/A,SWITCH-01,192.168.1.10,Gi1/0/5,20,1250,625
-1234.5678.9abc,phone-desk42,SWITCH-02,192.168.1.11,Gi1/0/8,30,3750,1875
+MAC Address,LLDP Name,Switch Hostname,Switch IP,Port,VLAN,Description,Input (bytes/sec),Output (bytes/sec)
+a1b2.c3d4.e5f6,printer-floor2,SWITCH-01,192.168.1.10,Gi1/0/1,10,PRINTER-2F,125,62
+f6e5.d4c3.b2a1,N/A,SWITCH-01,192.168.1.10,Gi1/0/5,20,N/A,1250,625
+1234.5678.9abc,phone-desk42,SWITCH-02,192.168.1.11,Gi1/0/8,30,DESK-42-PHONE,3750,1875
 ```
 
 **CDP Neighbors CSV (2026-01-15T10-30-45Z-cdp_neighbors.csv):**

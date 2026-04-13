@@ -13,7 +13,7 @@ defmodule EndpointFinder do
 
   defmodule Endpoint do
     defstruct [:mac_address, :lldp_name, :switch_hostname, :switch_ip, :port, :vlan,
-               :input_traffic, :output_traffic]
+               :description, :input_traffic, :output_traffic]
   end
 
   defmodule CdpNeighbor do
@@ -269,7 +269,7 @@ defmodule EndpointFinder do
       log(log_file, "Unique endpoint ports: #{map_size(by_port)}")
 
       endpoints = Enum.flat_map(by_port, fn {port, entries} ->
-        {input_traffic, output_traffic} = get_interface_stats(conn, channel, port, switch_ip, log_file, errors_agent)
+        {description, input_traffic, output_traffic} = get_interface_details(conn, channel, port, switch_ip, log_file, errors_agent)
         lldp_name = Map.get(lldp_map, port, "N/A")
 
         Enum.map(entries, fn entry ->
@@ -280,6 +280,7 @@ defmodule EndpointFinder do
             switch_ip: switch_ip,
             port: entry.port,
             vlan: entry.vlan,
+            description: description,
             input_traffic: input_traffic,
             output_traffic: output_traffic
           }
@@ -374,7 +375,7 @@ defmodule EndpointFinder do
     end
   end
 
-  defp get_interface_stats(conn, channel, port, switch_ip, log_file, errors_agent) do
+  defp get_interface_details(conn, channel, port, switch_ip, log_file, errors_agent) do
     # Convert normalized short form back to a form the switch accepts
     show_port = denormalize_port(port)
     log(log_file, "Executing: show interface #{show_port}")
@@ -385,13 +386,14 @@ defmodule EndpointFinder do
         log(log_file, output)
         log(log_file, "--- END show interface #{show_port} ---")
 
+        description = parse_interface_description(output)
         {input_bytes, output_bytes} = parse_interface_stats(output)
-        log(log_file, "Interface stats for #{port}: input=#{input_bytes}, output=#{output_bytes}")
-        {input_bytes, output_bytes}
+        log(log_file, "Interface details for #{port}: description=#{description}, input=#{input_bytes}, output=#{output_bytes}")
+        {description, input_bytes, output_bytes}
 
       {:error, reason} ->
-        log_error(log_file, errors_agent, "[#{switch_ip}] Failed to get interface stats for #{port}: #{inspect(reason)}")
-        {"N/A", "N/A"}
+        log_error(log_file, errors_agent, "[#{switch_ip}] Failed to get interface details for #{port}: #{inspect(reason)}")
+        {"N/A", "N/A", "N/A"}
     end
   end
 
@@ -635,6 +637,17 @@ defmodule EndpointFinder do
           end
         _ ->
           acc
+      end
+    end)
+  end
+
+  defp parse_interface_description(output) do
+    output
+    |> String.split("\n")
+    |> Enum.find_value("N/A", fn line ->
+      case Regex.run(~r/^\s+Description:\s+(.+)/i, line) do
+        [_, desc] -> String.trim(desc)
+        _ -> nil
       end
     end)
   end
@@ -936,7 +949,7 @@ defmodule EndpointFinder do
 
   defp write_endpoints_csv(filename, endpoints) do
     csv_lines = [
-      "MAC Address,LLDP Name,Switch Hostname,Switch IP,Port,VLAN,Input (bytes/sec),Output (bytes/sec)"
+      "MAC Address,LLDP Name,Switch Hostname,Switch IP,Port,VLAN,Description,Input (bytes/sec),Output (bytes/sec)"
       |
       Enum.map(endpoints, fn ep ->
         [
@@ -946,6 +959,7 @@ defmodule EndpointFinder do
           ep.switch_ip,
           denormalize_port(ep.port),
           to_string(ep.vlan),
+          ep.description,
           to_string(ep.input_traffic),
           to_string(ep.output_traffic)
         ]
