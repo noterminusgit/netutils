@@ -40,6 +40,10 @@ defmodule EndpointFinder do
     # Get switches filename
     switches_file = get_input("Enter switches file (one IP per line): ")
 
+    # Optional: reconcile with previous scan
+    previous_csv = get_input("Reconcile with previous CSV (leave blank to skip): ")
+    previous_macs = if previous_csv != "", do: read_previous_macs(previous_csv), else: nil
+
     # Read switches list
     switches = read_switches_file(switches_file)
 
@@ -69,7 +73,7 @@ defmodule EndpointFinder do
     all_cdp_neighbors = Enum.flat_map(results, fn {_endpoints, cdp} -> cdp end)
 
     # Display results and write CSVs
-    display_results(all_endpoints, all_cdp_neighbors)
+    display_results(all_endpoints, all_cdp_neighbors, previous_macs)
   end
 
   # ---------------------------------------------------------------------------
@@ -104,6 +108,28 @@ defmodule EndpointFinder do
       {:error, reason} ->
         IO.puts("Error reading #{filename}: #{reason}")
         []
+    end
+  end
+
+  defp read_previous_macs(filename) do
+    case File.read(filename) do
+      {:ok, content} ->
+        macs =
+          content
+          |> String.split("\n")
+          |> Enum.drop(1)  # skip header
+          |> Enum.reject(&(&1 == ""))
+          |> Enum.map(fn line ->
+            line |> String.split(",") |> List.first() |> String.trim() |> String.downcase()
+          end)
+          |> MapSet.new()
+
+        IO.puts("Loaded #{MapSet.size(macs)} MAC(s) from previous scan: #{filename}")
+        macs
+
+      {:error, reason} ->
+        IO.puts("WARNING: Could not read #{filename}: #{reason} — skipping reconciliation")
+        nil
     end
   end
 
@@ -767,9 +793,10 @@ defmodule EndpointFinder do
   # Results and CSV output
   # ---------------------------------------------------------------------------
 
-  defp display_results(endpoints, cdp_neighbors) do
+  defp display_results(endpoints, cdp_neighbors, previous_macs) do
     endpoints_file = "endpoints.csv"
     cdp_file = "cdp_neighbors.csv"
+    reconciled_file = "endpoints_still_connected.csv"
 
     IO.puts("\n" <> String.duplicate("=", 80))
     IO.puts("RESULTS: Found #{length(endpoints)} endpoint(s) and #{length(cdp_neighbors)} CDP neighbor(s) total")
@@ -786,6 +813,22 @@ defmodule EndpointFinder do
       Enum.each(endpoints_by_switch, fn {switch, switch_endpoints} ->
         IO.puts("  #{switch}: #{length(switch_endpoints)} endpoint(s)")
       end)
+
+      # Reconcile with previous scan if provided
+      if previous_macs do
+        still_connected = Enum.filter(endpoints, fn ep ->
+          String.downcase(ep.mac_address) in previous_macs
+        end)
+
+        disconnected_count = MapSet.size(previous_macs) - length(still_connected)
+
+        write_endpoints_csv(reconciled_file, still_connected)
+        IO.puts("\n--- Reconciliation ---")
+        IO.puts("Still connected: #{length(still_connected)} endpoint(s)")
+        IO.puts("New (not in previous):  #{length(endpoints) - length(still_connected)} endpoint(s)")
+        IO.puts("Disconnected (in previous, not now): #{max(disconnected_count, 0)} endpoint(s)")
+        IO.puts("Reconciled output written to: #{reconciled_file}")
+      end
     end
 
     if Enum.empty?(cdp_neighbors) do
