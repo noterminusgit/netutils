@@ -630,23 +630,33 @@ defmodule EndpointFinder do
   defp parse_interface_stats(output) do
     lines = String.split(output, "\n")
 
-    input_bytes =
-      Enum.find_value(lines, "N/A", fn line ->
-        case Regex.run(~r/(\d+)\s+packets input,\s+(\d+)\s+bytes/, line) do
-          [_, _packets, bytes] -> bytes
-          _ -> nil
-        end
-      end)
+    # Parse "5 minute input rate X bits/sec" and convert to bytes/sec
+    input_rate = parse_rate(lines, "input")
+    output_rate = parse_rate(lines, "output")
 
-    output_bytes =
-      Enum.find_value(lines, "N/A", fn line ->
-        case Regex.run(~r/(\d+)\s+packets output,\s+(\d+)\s+bytes/, line) do
-          [_, _packets, bytes] -> bytes
-          _ -> nil
-        end
-      end)
+    {input_rate, output_rate}
+  end
 
-    {input_bytes, output_bytes}
+  defp parse_rate(lines, direction) do
+    Enum.find_value(lines, "N/A", fn line ->
+      case Regex.run(~r/(\d+)\s+bits\/sec.*#{direction}|#{direction}\s+rate\s+(\d+)\s+bits\/sec/, line) do
+        nil ->
+          # Try the standard Cisco format: "5 minute input rate 1000 bits/sec, 2 packets/sec"
+          case Regex.run(~r/#{direction}\s+rate\s+(\d+)\s+bits/, line) do
+            [_, bits_str] -> bits_to_bytes_sec(bits_str)
+            _ -> nil
+          end
+        [_, "", bits_str] -> bits_to_bytes_sec(bits_str)
+        [_, bits_str | _] -> bits_to_bytes_sec(bits_str)
+      end
+    end)
+  end
+
+  defp bits_to_bytes_sec(bits_str) do
+    case Integer.parse(bits_str) do
+      {bits, _} -> to_string(div(bits, 8))
+      :error -> "N/A"
+    end
   end
 
   defp is_multicast_mac?(mac) do
@@ -864,7 +874,7 @@ defmodule EndpointFinder do
 
   defp write_endpoints_csv(filename, endpoints) do
     csv_lines = [
-      "MAC Address,LLDP Name,Switch Hostname,Switch IP,Port,VLAN,Input Traffic (bytes),Output Traffic (bytes)"
+      "MAC Address,LLDP Name,Switch Hostname,Switch IP,Port,VLAN,Input (bytes/sec),Output (bytes/sec)"
       |
       Enum.map(endpoints, fn ep ->
         [

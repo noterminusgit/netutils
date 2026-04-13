@@ -13,7 +13,7 @@ For each endpoint, the script collects:
 - **Switch IP** address used for the SSH connection
 - **Port** the endpoint is connected to
 - **VLAN** the endpoint is on
-- **Input/Output Traffic** (bytes) from interface counters
+- **Input/Output** rate (bytes/sec) from the 5-minute interface rate counters
 
 ## Features
 
@@ -22,7 +22,7 @@ For each endpoint, the script collects:
 - Reads switch list from a configurable text file
 - Uses CDP to identify and exclude inter-switch uplink/downlink ports
 - Collects LLDP system names for endpoints that support LLDP
-- Retrieves interface traffic statistics (input/output bytes)
+- Retrieves 5-minute interface rates (input/output bytes/sec)
 - Normalizes interface names across different Cisco CLI output formats
 - Filters out multicast MACs, CPU entries, Port-channels, and VLAN interfaces
 - Outputs endpoints to `endpoints.csv` and CDP neighbors to `cdp_neighbors.csv`
@@ -139,10 +139,10 @@ CDP neighbors by switch:
 
 **Endpoints CSV (endpoints.csv):**
 ```csv
-MAC Address,LLDP Name,Switch Hostname,Switch IP,Port,VLAN,Input Traffic (bytes),Output Traffic (bytes)
-a1b2.c3d4.e5f6,printer-floor2,SWITCH-01,192.168.1.10,Gi1/0/1,10,6789012,2345678
-f6e5.d4c3.b2a1,N/A,SWITCH-01,192.168.1.10,Gi1/0/5,20,1234567,987654
-1234.5678.9abc,phone-desk42,SWITCH-02,192.168.1.11,Gi1/0/8,30,456789,123456
+MAC Address,LLDP Name,Switch Hostname,Switch IP,Port,VLAN,Input (bytes/sec),Output (bytes/sec)
+a1b2.c3d4.e5f6,printer-floor2,SWITCH-01,192.168.1.10,Gi1/0/1,10,125,62
+f6e5.d4c3.b2a1,N/A,SWITCH-01,192.168.1.10,Gi1/0/5,20,1250,625
+1234.5678.9abc,phone-desk42,SWITCH-02,192.168.1.11,Gi1/0/8,30,3750,1875
 ```
 
 **CDP Neighbors CSV (cdp_neighbors.csv):**
