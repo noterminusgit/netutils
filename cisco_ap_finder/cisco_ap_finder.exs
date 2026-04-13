@@ -168,130 +168,92 @@ defmodule CiscoAPFinder do
     String.replace(name, ~r/[^a-zA-Z0-9\-_\.]/, "_")
   end
 
+  # Desired algorithms in preference order (modern first, legacy last).
+  # Covers Cisco IOS-XE 17.9.x defaults plus legacy for older switches.
+  # At runtime, each list is filtered to only algorithms the local OTP supports.
+  @desired_algorithms [
+    {:kex, [
+      :'curve25519-sha256@libssh.org',
+      :'ecdh-sha2-nistp256',
+      :'ecdh-sha2-nistp384',
+      :'ecdh-sha2-nistp521',
+      :'diffie-hellman-group14-sha256',
+      :'diffie-hellman-group16-sha512',
+      :'diffie-hellman-group18-sha512',
+      :'diffie-hellman-group14-sha1',
+      :'diffie-hellman-group-exchange-sha256',
+      :'diffie-hellman-group-exchange-sha1',
+      :'diffie-hellman-group1-sha1'
+    ]},
+    {:cipher, [
+      :'chacha20-poly1305@openssh.com',
+      :'aes128-gcm@openssh.com',
+      :'aes256-gcm@openssh.com',
+      :'aes128-ctr',
+      :'aes192-ctr',
+      :'aes256-ctr',
+      :'aes128-cbc',
+      :'aes192-cbc',
+      :'aes256-cbc',
+      :'3des-cbc'
+    ]},
+    {:mac, [
+      :'hmac-sha2-256-etm@openssh.com',
+      :'hmac-sha2-512-etm@openssh.com',
+      :'hmac-sha2-256',
+      :'hmac-sha2-512',
+      :'hmac-sha1',
+      :'hmac-sha1-96',
+      :'hmac-md5',
+      :'hmac-md5-96'
+    ]},
+    {:public_key, [
+      :'rsa-sha2-512',
+      :'rsa-sha2-256',
+      :'ecdsa-sha2-nistp256',
+      :'ecdsa-sha2-nistp384',
+      :'ecdsa-sha2-nistp521',
+      :'ssh-ed25519',
+      :'ssh-rsa',
+      :'ssh-dss'
+    ]}
+  ]
+
+  # Filter desired algorithms to only those the local OTP actually supports.
+  # This avoids :eoptions errors when OTP drops legacy algorithms.
+  defp supported_algorithms do
+    supported = :ssh.default_algorithms()
+
+    Enum.map(@desired_algorithms, fn {type, desired} ->
+      supported_for_type =
+        case Keyword.get(supported, type) do
+          [{:client2server, c2s} | _] -> MapSet.new(c2s)
+          list when is_list(list) -> MapSet.new(list)
+          _ -> MapSet.new()
+        end
+
+      filtered = Enum.filter(desired, &MapSet.member?(supported_for_type, &1))
+      {type, filtered}
+    end)
+  end
+
   defp connect_ssh(host, username, password) do
-    # Convert host to charlist
     host_charlist = to_charlist(host)
     username_charlist = to_charlist(username)
     password_charlist = to_charlist(password)
 
-<<<<<<< HEAD:cisco_ap_finder/cisco_ap_finder.exs
-    # SSH connection options with comprehensive cipher and key exchange support
-    # Based on Cisco IOS-XE 17.9.x documentation for Catalyst 9200 switches
-    # Includes legacy algorithms for backward compatibility with older switches
-=======
-    # SSH connection options with expanded cipher and key exchange support for older switches
->>>>>>> main:cisco_ap_finder.exs
     opts = [
       {:user, username_charlist},
       {:password, password_charlist},
       {:silently_accept_hosts, true},
       {:user_interaction, false},
       {:connect_timeout, 10000},
-      {:preferred_algorithms, [
-<<<<<<< HEAD:cisco_ap_finder/cisco_ap_finder.exs
-        # Key exchange algorithms (KEX) - IOS-XE 17.9.x default order plus legacy
-        {:kex, [
-          :'curve25519-sha256@libssh.org',     # IOS-XE 17.9.x default
-          :'ecdh-sha2-nistp256',                # IOS-XE 17.9.x default
-          :'ecdh-sha2-nistp384',                # IOS-XE 17.9.x default
-          :'ecdh-sha2-nistp521',                # IOS-XE 17.9.x default
-          :'diffie-hellman-group14-sha256',     # Legacy/newer IOS-XE
-          :'diffie-hellman-group16-sha512',     # Legacy/newer IOS-XE
-          :'diffie-hellman-group18-sha512',     # Legacy
-          :'diffie-hellman-group14-sha1',       # IOS-XE 17.9.x default
-          :'diffie-hellman-group-exchange-sha256',  # Legacy
-          :'diffie-hellman-group-exchange-sha1',    # Legacy
-          :'diffie-hellman-group1-sha1'         # Very old switches
-        ]},
-        # Encryption ciphers - IOS-XE default order plus non-default
-        {:cipher, [
-          :'chacha20-poly1305@openssh.com',     # IOS-XE default (highest priority)
-          :'aes128-gcm@openssh.com',            # IOS-XE default
-          :'aes256-gcm@openssh.com',            # IOS-XE default
-          :'aes128-ctr',                        # IOS-XE default
-          :'aes192-ctr',                        # IOS-XE default
-          :'aes256-ctr',                        # IOS-XE default
-          :'aes128-cbc',                        # IOS-XE non-default
-          :'aes192-cbc',                        # IOS-XE non-default
-          :'aes256-cbc',                        # IOS-XE non-default
-          :'3des-cbc'                           # IOS-XE non-default (legacy)
-        ]},
-        # MAC algorithms - IOS-XE default plus non-default
-        {:mac, [
-          :'hmac-sha2-256-etm@openssh.com',     # IOS-XE default (ETM = Encrypt-then-MAC)
-          :'hmac-sha2-512-etm@openssh.com',     # IOS-XE default
-          :'hmac-sha2-256',                     # IOS-XE non-default
-          :'hmac-sha2-512',                     # IOS-XE non-default
-          :'hmac-sha1',                         # IOS-XE non-default (legacy)
-          :'hmac-sha1-96',                      # Legacy
-          :'hmac-md5',                          # Very old switches
-          :'hmac-md5-96'                        # Very old switches
-        ]},
-        # Public key algorithms for host keys - IOS-XE supported
-        {:public_key, [
-          :'rsa-sha2-512',                      # IOS-XE default (highest priority)
-          :'rsa-sha2-256',                      # IOS-XE supported
-          :'ecdsa-sha2-nistp256',               # IOS-XE supported
-          :'ecdsa-sha2-nistp384',               # IOS-XE supported
-          :'ecdsa-sha2-nistp521',               # IOS-XE supported
-          :'ssh-ed25519',                       # IOS-XE supported
-          :'ssh-rsa',                           # IOS-XE supported (legacy)
-          :'ssh-dss'                            # Very old switches
-=======
-        # Key exchange algorithms (KEX) - including older ones for legacy switches
-        {:kex, [
-          :'diffie-hellman-group-exchange-sha256',
-          :'diffie-hellman-group-exchange-sha1',
-          :'diffie-hellman-group14-sha256',
-          :'diffie-hellman-group14-sha1',
-          :'diffie-hellman-group16-sha512',
-          :'diffie-hellman-group18-sha512',
-          :'diffie-hellman-group1-sha1',
-          :'ecdh-sha2-nistp256',
-          :'ecdh-sha2-nistp384',
-          :'ecdh-sha2-nistp521'
-        ]},
-        # Encryption ciphers - including older ones for compatibility
-        {:cipher, [
-          :'aes128-ctr',
-          :'aes192-ctr',
-          :'aes256-ctr',
-          :'aes128-cbc',
-          :'aes192-cbc',
-          :'aes256-cbc',
-          :'3des-cbc',
-          :'aes128-gcm@openssh.com',
-          :'aes256-gcm@openssh.com'
-        ]},
-        # MAC algorithms - including older ones
-        {:mac, [
-          :'hmac-sha2-256',
-          :'hmac-sha2-512',
-          :'hmac-sha1',
-          :'hmac-sha1-96',
-          :'hmac-md5',
-          :'hmac-md5-96'
-        ]},
-        # Public key algorithms for host keys
-        {:public_key, [
-          :'ssh-rsa',
-          :'rsa-sha2-256',
-          :'rsa-sha2-512',
-          :'ecdsa-sha2-nistp256',
-          :'ecdsa-sha2-nistp384',
-          :'ecdsa-sha2-nistp521',
-          :'ssh-dss'
->>>>>>> main:cisco_ap_finder.exs
-        ]}
-      ]}
+      {:preferred_algorithms, supported_algorithms()}
     ]
 
     case :ssh.connect(host_charlist, 22, opts) do
-      {:ok, conn} ->
-        {:ok, conn}
-
-      {:error, reason} ->
-        {:error, reason}
+      {:ok, conn} -> {:ok, conn}
+      {:error, reason} -> {:error, reason}
     end
   end
 
