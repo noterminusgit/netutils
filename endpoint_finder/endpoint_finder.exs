@@ -18,7 +18,7 @@ defmodule EndpointFinder do
 
   defmodule CdpNeighbor do
     defstruct [:switch_hostname, :switch_ip, :device_id, :neighbor_ip, :local_port,
-               :remote_port, :platform, :capabilities]
+               :remote_port, :platform, :capabilities, :description]
   end
 
   def run do
@@ -223,8 +223,10 @@ defmodule EndpointFinder do
     {cdp_uplink_ports, cdp_neighbor_entries} = get_cdp_neighbors(conn, channel, switch_ip, log_file, errors_agent)
     log(log_file, "CDP uplink ports to exclude: #{inspect(MapSet.to_list(cdp_uplink_ports))}")
 
-    # Build CDP neighbor structs with switch context
+    # Build CDP neighbor structs with switch context and interface descriptions
     cdp_neighbors = Enum.map(cdp_neighbor_entries, fn entry ->
+      description = get_interface_description(conn, channel, entry.local_port, switch_ip, log_file, errors_agent)
+
       %CdpNeighbor{
         switch_hostname: switch_hostname,
         switch_ip: switch_ip,
@@ -233,7 +235,8 @@ defmodule EndpointFinder do
         local_port: entry.local_port,
         remote_port: entry.remote_port,
         platform: entry.platform,
-        capabilities: entry.capabilities
+        capabilities: entry.capabilities,
+        description: description
       }
     end)
 
@@ -372,6 +375,23 @@ defmodule EndpointFinder do
       {:error, reason} ->
         log_error(log_file, errors_agent, "[#{switch_ip}] Failed to get LLDP neighbors: #{inspect(reason)}")
         %{}
+    end
+  end
+
+  defp get_interface_description(conn, channel, port, switch_ip, log_file, errors_agent) do
+    show_port = denormalize_port(port)
+
+    case execute_command(conn, channel, "show interface #{show_port} description") do
+      {:ok, output} ->
+        log(log_file, "--- BEGIN show interface #{show_port} description ---")
+        log(log_file, output)
+        log(log_file, "--- END show interface #{show_port} description ---")
+
+        parse_description_brief(output)
+
+      {:error, reason} ->
+        log_error(log_file, errors_agent, "[#{switch_ip}] Failed to get interface description for #{port}: #{inspect(reason)}")
+        "N/A"
     end
   end
 
@@ -641,6 +661,28 @@ defmodule EndpointFinder do
     end)
   end
 
+  # Parse "show interface <port> description" brief output
+  # Format: Interface  Status  Protocol  Description
+  defp parse_description_brief(output) do
+    output
+    |> String.split("\n")
+    |> Enum.find_value("N/A", fn line ->
+      trimmed = String.trim(line)
+      cond do
+        trimmed == "" -> nil
+        String.starts_with?(trimmed, "Interface") -> nil
+        String.contains?(trimmed, "-----") -> nil
+        true ->
+          # Split by 2+ spaces to handle column alignment
+          case Regex.run(~r/^\S+\s+\S+\s+\S+\s+(.+)/, trimmed) do
+            [_, desc] -> String.trim(desc)
+            _ -> nil
+          end
+      end
+    end)
+  end
+
+  # Parse "show interface <port>" full output for Description line
   defp parse_interface_description(output) do
     output
     |> String.split("\n")
@@ -973,7 +1015,7 @@ defmodule EndpointFinder do
 
   defp write_cdp_csv(filename, cdp_neighbors) do
     csv_lines = [
-      "Switch Hostname,Switch IP,Neighbor Device ID,Neighbor IP,Local Port,Remote Port,Platform,Capabilities"
+      "Switch Hostname,Switch IP,Neighbor Device ID,Neighbor IP,Local Port,Description,Remote Port,Platform,Capabilities"
       |
       Enum.map(cdp_neighbors, fn n ->
         [
@@ -982,6 +1024,7 @@ defmodule EndpointFinder do
           n.device_id,
           n.neighbor_ip,
           denormalize_port(n.local_port),
+          n.description,
           n.remote_port,
           n.platform,
           n.capabilities

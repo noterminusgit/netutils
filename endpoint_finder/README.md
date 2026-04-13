@@ -148,10 +148,10 @@ f6e5.d4c3.b2a1,N/A,SWITCH-01,192.168.1.10,Gi1/0/5,20,N/A,1250,625
 
 **CDP Neighbors CSV (2026-01-15T10-30-45Z-cdp_neighbors.csv):**
 ```csv
-Switch Hostname,Switch IP,Neighbor Device ID,Neighbor IP,Local Port,Remote Port,Platform,Capabilities
-SWITCH-01,192.168.1.10,SWITCH-02.domain.com,10.0.0.2,Gi1/0/25,Gi1/0/1,cisco WS-C3750-48P,Router Switch IGMP
-SWITCH-01,192.168.1.10,CORE-SW.domain.com,10.0.0.1,Te1/1/1,Te1/0/1,cisco C9300-48P,Router Switch IGMP
-SWITCH-02,192.168.1.11,SWITCH-01.domain.com,10.0.0.3,Gi1/0/25,Gi1/0/25,cisco C9200-48P,Router Switch IGMP
+Switch Hostname,Switch IP,Neighbor Device ID,Neighbor IP,Local Port,Description,Remote Port,Platform,Capabilities
+SWITCH-01,192.168.1.10,SWITCH-02.domain.com,10.0.0.2,Gi1/0/25,UPLINK-SW02,Gi1/0/1,cisco WS-C3750-48P,Router Switch IGMP
+SWITCH-01,192.168.1.10,CORE-SW.domain.com,10.0.0.1,Te1/1/1,UPLINK-CORE,Te1/0/1,cisco C9300-48P,Router Switch IGMP
+SWITCH-02,192.168.1.11,SWITCH-01.domain.com,10.0.0.3,Gi1/0/25,UPLINK-SW01,Gi1/0/25,cisco C9200-48P,Router Switch IGMP
 ```
 
 ## How It Works
