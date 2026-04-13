@@ -754,6 +754,7 @@ defmodule EndpointFinder do
       {:password, password_charlist},
       {:silently_accept_hosts, true},
       {:user_interaction, false},
+      {:quiet_mode, true},
       {:connect_timeout, 10000},
       {:preferred_algorithms, supported_algorithms()}
     ]
