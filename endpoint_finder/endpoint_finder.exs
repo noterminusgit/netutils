@@ -58,22 +58,32 @@ defmodule EndpointFinder do
     IO.puts("\nFound #{length(switches)} switch(es) to scan...")
     IO.puts("Switches: #{Enum.join(switches, ", ")}\n")
 
+    # Start error collector
+    {:ok, errors_agent} = Agent.start_link(fn -> [] end)
+
     # Process each switch in parallel
     results =
       switches
       |> Task.async_stream(
-        fn switch -> process_switch(switch, username, password, log_dir) end,
+        fn switch -> process_switch(switch, username, password, log_dir, errors_agent) end,
         max_concurrency: 10,
         timeout: 120_000,
         on_timeout: :kill_task
       )
       |> Enum.map(fn
         {:ok, result} -> result
-        {:exit, _reason} -> {[], []}
+        {:exit, reason} ->
+          add_error(errors_agent, "Task timed out or crashed: #{inspect(reason)}")
+          {[], []}
       end)
 
     all_endpoints = Enum.flat_map(results, fn {endpoints, _cdp} -> endpoints end)
     all_cdp_neighbors = Enum.flat_map(results, fn {_endpoints, cdp} -> cdp end)
+
+    # Write error log if any errors occurred
+    errors = Agent.get(errors_agent, & &1) |> Enum.reverse()
+    Agent.stop(errors_agent)
+    write_error_log(errors, run_time)
 
     # Display results and write CSVs
     display_results(all_endpoints, all_cdp_neighbors, previous_macs, run_time)
@@ -140,7 +150,7 @@ defmodule EndpointFinder do
   # Per-switch orchestration
   # ---------------------------------------------------------------------------
 
-  defp process_switch(switch, username, password, log_dir) do
+  defp process_switch(switch, username, password, log_dir, errors_agent) do
     log_file = Path.join(log_dir, "#{sanitize_filename(switch)}.log")
 
     log(log_file, "=== Starting scan of switch: #{switch} ===")
@@ -179,10 +189,10 @@ defmodule EndpointFinder do
               {:ok, _output} ->
                 log(log_file, "Terminal pagination disabled")
               {:error, reason} ->
-                log(log_file, "WARNING: Failed to disable pagination: #{inspect(reason)}")
+                log_error(log_file, errors_agent, "[#{switch}] Failed to disable pagination: #{inspect(reason)}")
             end
 
-            {endpoints, cdp_neighbors} = discover_endpoints(conn, channel, switch, log_file)
+            {endpoints, cdp_neighbors} = discover_endpoints(conn, channel, switch, log_file, errors_agent)
             :ssh_connection.close(conn, channel)
             log(log_file, "SSH channel closed")
             disconnect_ssh(conn)
@@ -192,25 +202,25 @@ defmodule EndpointFinder do
             {endpoints, cdp_neighbors}
 
           {:error, reason} ->
-            log(log_file, "ERROR: Failed to open SSH channel: #{inspect(reason)}")
+            log_error(log_file, errors_agent, "[#{switch}] Failed to open SSH channel: #{inspect(reason)}")
             disconnect_ssh(conn)
             {[], []}
         end
 
       {:error, reason} ->
-        log(log_file, "ERROR: Failed to connect to #{switch}: #{inspect(reason)}")
+        log_error(log_file, errors_agent, "[#{switch}] Failed to connect: #{inspect(reason)}")
         IO.puts("  Error connecting to #{switch}: #{inspect(reason)}")
         {[], []}
     end
   end
 
-  defp discover_endpoints(conn, channel, switch_ip, log_file) do
+  defp discover_endpoints(conn, channel, switch_ip, log_file, errors_agent) do
     # Step 1: Get switch hostname
-    switch_hostname = get_switch_hostname(conn, channel, switch_ip, log_file)
+    switch_hostname = get_switch_hostname(conn, channel, switch_ip, log_file, errors_agent)
     log(log_file, "Switch hostname: #{switch_hostname}")
 
     # Step 2: Get CDP neighbors detail (uplink/downlink ports to exclude + neighbor info for CSV)
-    {cdp_uplink_ports, cdp_neighbor_entries} = get_cdp_neighbors(conn, channel, log_file)
+    {cdp_uplink_ports, cdp_neighbor_entries} = get_cdp_neighbors(conn, channel, switch_ip, log_file, errors_agent)
     log(log_file, "CDP uplink ports to exclude: #{inspect(MapSet.to_list(cdp_uplink_ports))}")
 
     # Build CDP neighbor structs with switch context
@@ -228,7 +238,7 @@ defmodule EndpointFinder do
     end)
 
     # Step 3: Get all MAC address table entries
-    mac_entries = get_mac_entries(conn, channel, log_file)
+    mac_entries = get_mac_entries(conn, channel, switch_ip, log_file, errors_agent)
     log(log_file, "Total MAC entries found: #{length(mac_entries)}")
 
     if Enum.empty?(mac_entries) do
@@ -236,7 +246,7 @@ defmodule EndpointFinder do
       {[], cdp_neighbors}
     else
       # Step 4: Get LLDP neighbor names
-      lldp_map = get_lldp_map(conn, channel, log_file)
+      lldp_map = get_lldp_map(conn, channel, switch_ip, log_file, errors_agent)
       log(log_file, "LLDP entries found: #{map_size(lldp_map)}")
 
       # Step 5: Filter out uplink ports, CPU, Port-channel, VLAN interfaces, and multicast MACs
@@ -259,7 +269,7 @@ defmodule EndpointFinder do
       log(log_file, "Unique endpoint ports: #{map_size(by_port)}")
 
       endpoints = Enum.flat_map(by_port, fn {port, entries} ->
-        {input_traffic, output_traffic} = get_interface_stats(conn, channel, port, log_file)
+        {input_traffic, output_traffic} = get_interface_stats(conn, channel, port, switch_ip, log_file, errors_agent)
         lldp_name = Map.get(lldp_map, port, "N/A")
 
         Enum.map(entries, fn entry ->
@@ -284,7 +294,7 @@ defmodule EndpointFinder do
   # Data collection helpers
   # ---------------------------------------------------------------------------
 
-  defp get_switch_hostname(conn, channel, switch_ip, log_file) do
+  defp get_switch_hostname(conn, channel, switch_ip, log_file, errors_agent) do
     log(log_file, "Executing: show run | include hostname")
 
     case execute_command(conn, channel, "show run | include hostname") do
@@ -296,12 +306,12 @@ defmodule EndpointFinder do
         parse_switch_hostname(output) || switch_ip
 
       {:error, reason} ->
-        log(log_file, "WARNING: Failed to get hostname: #{inspect(reason)}, using IP")
+        log_error(log_file, errors_agent, "[#{switch_ip}] Failed to get hostname: #{inspect(reason)}, using IP")
         switch_ip
     end
   end
 
-  defp get_cdp_neighbors(conn, channel, log_file) do
+  defp get_cdp_neighbors(conn, channel, switch_ip, log_file, errors_agent) do
     log(log_file, "Executing: show cdp neighbors detail")
 
     case execute_command(conn, channel, "show cdp neighbors detail") do
@@ -321,13 +331,12 @@ defmodule EndpointFinder do
         {uplink_ports, entries}
 
       {:error, reason} ->
-        log(log_file, "WARNING: Failed to get CDP neighbors: #{inspect(reason)}")
-        log(log_file, "WARNING: Cannot exclude uplink ports - all ports will be included")
+        log_error(log_file, errors_agent, "[#{switch_ip}] Failed to get CDP neighbors: #{inspect(reason)} — cannot exclude uplink ports")
         {MapSet.new(), []}
     end
   end
 
-  defp get_mac_entries(conn, channel, log_file) do
+  defp get_mac_entries(conn, channel, switch_ip, log_file, errors_agent) do
     log(log_file, "Executing: show mac address-table")
 
     case execute_command(conn, channel, "show mac address-table") do
@@ -341,12 +350,12 @@ defmodule EndpointFinder do
         entries
 
       {:error, reason} ->
-        log(log_file, "ERROR: Failed to get MAC address table: #{inspect(reason)}")
+        log_error(log_file, errors_agent, "[#{switch_ip}] Failed to get MAC address table: #{inspect(reason)}")
         []
     end
   end
 
-  defp get_lldp_map(conn, channel, log_file) do
+  defp get_lldp_map(conn, channel, switch_ip, log_file, errors_agent) do
     log(log_file, "Executing: show lldp neighbors")
 
     case execute_command(conn, channel, "show lldp neighbors") do
@@ -360,12 +369,12 @@ defmodule EndpointFinder do
         lldp
 
       {:error, reason} ->
-        log(log_file, "WARNING: Failed to get LLDP neighbors: #{inspect(reason)}, all LLDP names will be N/A")
+        log_error(log_file, errors_agent, "[#{switch_ip}] Failed to get LLDP neighbors: #{inspect(reason)}")
         %{}
     end
   end
 
-  defp get_interface_stats(conn, channel, port, log_file) do
+  defp get_interface_stats(conn, channel, port, switch_ip, log_file, errors_agent) do
     # Convert normalized short form back to a form the switch accepts
     show_port = denormalize_port(port)
     log(log_file, "Executing: show interface #{show_port}")
@@ -381,7 +390,7 @@ defmodule EndpointFinder do
         {input_bytes, output_bytes}
 
       {:error, reason} ->
-        log(log_file, "WARNING: Failed to get interface stats for #{port}: #{inspect(reason)}")
+        log_error(log_file, errors_agent, "[#{switch_ip}] Failed to get interface stats for #{port}: #{inspect(reason)}")
         {"N/A", "N/A"}
     end
   end
@@ -814,6 +823,28 @@ defmodule EndpointFinder do
   defp log(log_file, message) do
     timestamp = DateTime.utc_now() |> DateTime.to_string()
     File.write!(log_file, "[#{timestamp}] #{message}\n", [:append])
+  end
+
+  defp log_error(log_file, errors_agent, message) do
+    log(log_file, "ERROR: #{message}")
+    add_error(errors_agent, message)
+  end
+
+  defp add_error(errors_agent, message) do
+    timestamp = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+    Agent.update(errors_agent, fn errors -> ["[#{timestamp}] #{message}" | errors] end)
+  end
+
+  defp write_error_log([], _run_time), do: :ok
+  defp write_error_log(errors, run_time) do
+    file_timestamp = String.replace(run_time, ~r/[:\.]/, "-")
+    filename = "#{file_timestamp}-errors.log"
+    content = Enum.join(errors, "\n") <> "\n"
+
+    case File.write(filename, content) do
+      :ok -> IO.puts("Errors written to: #{filename}")
+      {:error, reason} -> IO.puts("Error writing to #{filename}: #{reason}")
+    end
   end
 
   defp sanitize_filename(name) do

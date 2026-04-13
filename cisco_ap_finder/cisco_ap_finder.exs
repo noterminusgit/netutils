@@ -45,19 +45,29 @@ defmodule CiscoAPFinder do
     IO.puts("\nFound #{length(switches)} switch(es) to scan...")
     IO.puts("Switches: #{Enum.join(switches, ", ")}\n")
 
+    # Start error collector
+    {:ok, errors_agent} = Agent.start_link(fn -> [] end)
+
     # Connect to each switch and find APs in parallel
     all_aps =
       switches
       |> Task.async_stream(
-        fn switch -> find_aps_on_switch(switch, username, password, log_dir) end,
+        fn switch -> find_aps_on_switch(switch, username, password, log_dir, errors_agent) end,
         max_concurrency: 10,
         timeout: 120_000,
         on_timeout: :kill_task
       )
       |> Enum.flat_map(fn
         {:ok, aps} -> aps
-        {:exit, _reason} -> []
+        {:exit, reason} ->
+          add_error(errors_agent, "Task timed out or crashed: #{inspect(reason)}")
+          []
       end)
+
+    # Write error log if any errors occurred
+    errors = Agent.get(errors_agent, & &1) |> Enum.reverse()
+    Agent.stop(errors_agent)
+    write_error_log(errors, run_time)
 
     # Display results
     display_results(all_aps, run_time)
@@ -96,7 +106,7 @@ defmodule CiscoAPFinder do
     end
   end
 
-  defp find_aps_on_switch(switch, username, password, log_dir) do
+  defp find_aps_on_switch(switch, username, password, log_dir, errors_agent) do
     # Create log file for this switch
     log_file = Path.join(log_dir, "#{sanitize_filename(switch)}.log")
 
@@ -137,10 +147,10 @@ defmodule CiscoAPFinder do
               {:ok, _output} ->
                 log(log_file, "Terminal pagination disabled")
               {:error, reason} ->
-                log(log_file, "WARNING: Failed to disable pagination: #{inspect(reason)}")
+                log_error(log_file, errors_agent, "[#{switch}] Failed to disable pagination: #{inspect(reason)}")
             end
 
-            aps = get_cisco_aps(conn, channel, switch, log_file)
+            aps = get_cisco_aps(conn, channel, switch, log_file, errors_agent)
             :ssh_connection.close(conn, channel)
             log(log_file, "SSH channel closed")
             disconnect_ssh(conn)
@@ -150,13 +160,13 @@ defmodule CiscoAPFinder do
             aps
 
           {:error, reason} ->
-            log(log_file, "ERROR: Failed to open SSH channel: #{inspect(reason)}")
+            log_error(log_file, errors_agent, "[#{switch}] Failed to open SSH channel: #{inspect(reason)}")
             disconnect_ssh(conn)
             []
         end
 
       {:error, reason} ->
-        log(log_file, "ERROR: Failed to connect to #{switch}: #{inspect(reason)}")
+        log_error(log_file, errors_agent, "[#{switch}] Failed to connect: #{inspect(reason)}")
         IO.puts("  Error connecting to #{switch}: #{inspect(reason)}")
         []
     end
@@ -165,6 +175,28 @@ defmodule CiscoAPFinder do
   defp log(log_file, message) do
     timestamp = DateTime.utc_now() |> DateTime.to_string()
     File.write!(log_file, "[#{timestamp}] #{message}\n", [:append])
+  end
+
+  defp log_error(log_file, errors_agent, message) do
+    log(log_file, "ERROR: #{message}")
+    add_error(errors_agent, message)
+  end
+
+  defp add_error(errors_agent, message) do
+    timestamp = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+    Agent.update(errors_agent, fn errors -> ["[#{timestamp}] #{message}" | errors] end)
+  end
+
+  defp write_error_log([], _run_time), do: :ok
+  defp write_error_log(errors, run_time) do
+    file_timestamp = String.replace(run_time, ~r/[:\.]/, "-")
+    filename = "#{file_timestamp}-errors.log"
+    content = Enum.join(errors, "\n") <> "\n"
+
+    case File.write(filename, content) do
+      :ok -> IO.puts("Errors written to: #{filename}")
+      {:error, reason} -> IO.puts("Error writing to #{filename}: #{reason}")
+    end
   end
 
   defp sanitize_filename(name) do
@@ -265,7 +297,7 @@ defmodule CiscoAPFinder do
     :ssh.close(conn)
   end
 
-  defp get_cisco_aps(conn, channel, switch, log_file) do
+  defp get_cisco_aps(conn, channel, switch, log_file, errors_agent) do
     log(log_file, "Executing: show power inline")
 
     # Execute "show power inline" command
@@ -282,17 +314,17 @@ defmodule CiscoAPFinder do
 
         # For each interface, get MAC address and VLAN, then check if it's a Cisco device
         Enum.map(interface_models, fn {interface, model} ->
-          get_ap_details(conn, channel, interface, model, switch, log_file)
+          get_ap_details(conn, channel, interface, model, switch, log_file, errors_agent)
         end)
         |> Enum.reject(&is_nil/1)
 
       {:error, reason} ->
-        log(log_file, "ERROR: Failed to execute 'show power inline': #{inspect(reason)}")
+        log_error(log_file, errors_agent, "[#{switch}] Failed to execute 'show power inline': #{inspect(reason)}")
         []
     end
   end
 
-  defp get_ap_details(conn, channel, interface, model, switch, log_file) do
+  defp get_ap_details(conn, channel, interface, model, switch, log_file, errors_agent) do
     log(log_file, "Processing interface #{interface} (model: #{model})")
     log(log_file, "Executing: show mac address-table interface #{interface}")
 
@@ -313,7 +345,7 @@ defmodule CiscoAPFinder do
 
               # Get hostname from CDP
               log(log_file, "Executing: show cdp neighbors #{interface} detail")
-              hostname = get_hostname_from_cdp(conn, channel, interface, log_file)
+              hostname = get_hostname_from_cdp(conn, channel, interface, log_file, errors_agent, switch)
               log(log_file, "Hostname from CDP: #{hostname || "Unknown"}")
 
               log(log_file, "✓ Adding AP: #{hostname || "Unknown"} (#{mac_address}) on #{interface}")
@@ -337,7 +369,7 @@ defmodule CiscoAPFinder do
         end
 
       {:error, reason} ->
-        log(log_file, "ERROR: Failed to execute 'show mac address-table interface #{interface}': #{inspect(reason)}")
+        log_error(log_file, errors_agent, "[#{switch}] Failed to get MAC address table for #{interface}: #{inspect(reason)}")
         nil
     end
   end
@@ -380,7 +412,7 @@ defmodule CiscoAPFinder do
     result || :error
   end
 
-  defp get_hostname_from_cdp(conn, channel, interface, log_file) do
+  defp get_hostname_from_cdp(conn, channel, interface, log_file, errors_agent, switch) do
     # Try to get hostname from CDP neighbor detail
     case execute_command(conn, channel, "show cdp neighbors #{interface} detail") do
       {:ok, cdp_output} ->
@@ -397,7 +429,7 @@ defmodule CiscoAPFinder do
         hostname
 
       {:error, reason} ->
-        log(log_file, "ERROR: Failed to execute 'show cdp neighbors #{interface} detail': #{inspect(reason)}")
+        log_error(log_file, errors_agent, "[#{switch}] Failed to get CDP neighbors for #{interface}: #{inspect(reason)}")
         nil
     end
   end
