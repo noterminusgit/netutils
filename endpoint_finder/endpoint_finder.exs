@@ -380,14 +380,13 @@ defmodule EndpointFinder do
 
   defp get_interface_description(conn, channel, port, switch_ip, log_file, errors_agent) do
     show_port = denormalize_port(port)
+    log(log_file, "Executing: show interface #{show_port} (for description)")
 
-    case execute_command(conn, channel, "show interface #{show_port} description") do
+    case execute_command(conn, channel, "show interface #{show_port}") do
       {:ok, output} ->
-        log(log_file, "--- BEGIN show interface #{show_port} description ---")
-        log(log_file, output)
-        log(log_file, "--- END show interface #{show_port} description ---")
-
-        parse_description_brief(output)
+        desc = parse_interface_description(output)
+        log(log_file, "Interface description for #{port}: #{desc}")
+        desc
 
       {:error, reason} ->
         log_error(log_file, errors_agent, "[#{switch_ip}] Failed to get interface description for #{port}: #{inspect(reason)}")
@@ -661,28 +660,6 @@ defmodule EndpointFinder do
     end)
   end
 
-  # Parse "show interface <port> description" brief output
-  # Format: Interface  Status  Protocol  Description
-  defp parse_description_brief(output) do
-    output
-    |> String.split("\n")
-    |> Enum.find_value("N/A", fn line ->
-      trimmed = String.trim(line)
-      cond do
-        trimmed == "" -> nil
-        String.starts_with?(trimmed, "Interface") -> nil
-        String.contains?(trimmed, "-----") -> nil
-        true ->
-          # Split by 2+ spaces to handle column alignment
-          case Regex.run(~r/^\S+\s+\S+\s+\S+\s+(.+)/, trimmed) do
-            [_, desc] -> String.trim(desc)
-            _ -> nil
-          end
-      end
-    end)
-  end
-
-  # Parse "show interface <port>" full output for Description line
   defp parse_interface_description(output) do
     output
     |> String.split("\n")
