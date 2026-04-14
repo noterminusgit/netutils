@@ -32,8 +32,9 @@ netutils/
 └── [future_script]/             # Future utility scripts follow same pattern
     ├── [future_script].exs      # Main script
     ├── README.md                # Detailed documentation for this script
-    ├── [config/input files]     # Script-specific files
-    └── [output directories]     # Generated files (not tracked)
+    ├── devices.txt              # Input data file (canonical name for new scripts)
+    ├── output/                  # Timestamped CSVs (generated, not tracked)
+    └── logs/                    # Log directory (generated, not tracked)
 ```
 
 ## Architectural Principles
@@ -63,8 +64,9 @@ Each script directory should contain:
 
 - **Main script file**: Named identically to the directory (e.g., `cisco_ap_finder.exs`)
 - **README.md**: Detailed documentation with description, features, prerequisites, setup, usage, example output, how it works, logging, and troubleshooting
-- **Input files**: Configuration files, data files, or templates (e.g., `switches.txt`)
-- **Output directories**: Generated at runtime, excluded from git (e.g., `logs/`, `*.csv`)
+- **Input file**: `devices.txt` — the canonical input filename for every script in this repo. One IP address or hostname per line; lines starting with `#` are comments. New scripts must default to reading `devices.txt`. (The two original scripts still ship a `switches.txt` sample for backwards compatibility, but new scripts should standardize on `devices.txt`.) See `endpoint_finder/switches.txt` for the expected line format.
+- **Output CSV(s)**: Every script must write its CSV output to `output/<timestamp>-<name>.csv`, where `<timestamp>` is the run start time formatted as ISO-8601 with `:` and `.` replaced by `-` (e.g., `output/2026-04-14T10-30-45-qsfp_sfp_adapters.csv`). See `endpoint_finder/endpoint_finder.exs` (`run_time` / `file_timestamp` in `run/0` and the `write_*_csv` helpers) for the reference implementation. The `output/` directory is generated at runtime and excluded from git.
+- **Logs directory**: `logs/<timestamp>/` — one log file per device, generated at runtime, excluded from git
 
 ### 3. Git Ignore Patterns
 
@@ -97,15 +99,17 @@ cd [script_name]
 touch [script_name].exs
 chmod +x [script_name].exs
 
-# Add any configuration or input files
-touch config.txt  # or other relevant files
+# Create the canonical input file (every script in this repo reads devices.txt)
+touch devices.txt
 ```
+
+The script should read `devices.txt` by default (one IP address or hostname per line; lines starting with `#` are comments). Its CSV output must be written to `output/<timestamp>-<name>.csv` — see `endpoint_finder/endpoint_finder.exs` for the reference pattern (it computes a `file_timestamp` from `DateTime.utc_now/0` and prepends it to every CSV filename).
 
 ### Step 3: Commit Input Files
 
-The root `.gitignore` globally ignores `*.csv`, `*.txt`, and `logs/`, so generated output is already covered. To commit sample input files (e.g., `switches.txt`), force-add them:
+The root `.gitignore` globally ignores `*.csv`, `*.txt`, and `logs/`, so generated output is already covered. To commit a sample `devices.txt`, force-add it:
 ```bash
-git add -f [script_name]/switches.txt
+git add -f [script_name]/devices.txt
 ```
 
 Do **not** add per-script negation patterns to `.gitignore` — the global `*.txt` ignore prevents users' working device lists from causing git conflicts.

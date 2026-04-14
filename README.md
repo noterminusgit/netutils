@@ -25,6 +25,19 @@ elixir endpoint_finder.exs
 
 See [`endpoint_finder/README.md`](endpoint_finder/README.md) for detailed documentation.
 
+---
+
+## QSFP-SFP Adapter Finder
+
+Finds QSFP-to-SFP adapters (e.g., `CVR-QSFP-SFP10G`) installed in Cisco switches by parsing `show inventory`, then reports each adapter's port, connection status, and interface description to a timestamped CSV.
+
+```bash
+cd qsfp_sfp_adapter_finder
+elixir qsfp_sfp_adapter_finder.exs
+```
+
+See [`qsfp_sfp_adapter_finder/README.md`](qsfp_sfp_adapter_finder/README.md) for detailed documentation.
+
 ### License
 
 See LICENSE file for details.
