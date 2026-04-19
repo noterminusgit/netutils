@@ -121,7 +121,7 @@ defmodule QsfpSfpAdapterFinder do
             log(log_file, "SSH channel opened")
 
             :ssh_connection.ptty_alloc(conn, channel, [
-              {:term, 'vt100'},
+              {:term, ~c"vt100"},
               {:width, 80},
               {:height, 24},
               {:pixel_width, 640},
@@ -515,10 +515,15 @@ defmodule QsfpSfpAdapterFinder do
   # ---------------------------------------------------------------------------
 
   defp execute_command(conn, channel, command) do
-    :ssh_connection.send(conn, channel, to_charlist(command <> "\n"), 0)
-    output = collect_output(conn, channel, "")
-    Process.sleep(100)
-    {:ok, output}
+    case :ssh_connection.send(conn, channel, to_charlist(command <> "\n"), 0) do
+      :ok ->
+        output = collect_output(conn, channel, "")
+        Process.sleep(100)
+        {:ok, output}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   defp collect_output(conn, channel, acc) do
