@@ -11,7 +11,7 @@ Each utility script in this repository follows a **subdirectory-per-script** pat
 ```
 netutils/
 ├── README.md                    # Brief overview of each script (not detailed docs)
-├── CLAUDE.md                    # This file - architecture guide
+├── AGENTS.md                    # This file - architecture guide
 ├── LICENSE
 ├── .gitignore
 │
@@ -205,8 +205,8 @@ Before committing changes:
 ### Branch Naming
 
 Use descriptive branch names:
-- `claude/add-[feature]-[session-id]` for new features
-- `claude/fix-[issue]-[session-id]` for bug fixes
+- `agent/add-[feature]-[session-id]` for new features
+- `agent/fix-[issue]-[session-id]` for bug fixes
 
 ### Commit Messages
 
@@ -226,7 +226,7 @@ Fixes: [issue description]
 
 Always push to feature branches:
 ```bash
-git push -u origin claude/[feature-name]-[session-id]
+git push -u origin agent/[feature-name]-[session-id]
 ```
 
 ## References
@@ -245,7 +245,7 @@ git push -u origin claude/[feature-name]-[session-id]
 
 ### When to Update This Guide
 
-Update CLAUDE.md when:
+Update AGENTS.md when:
 - Adding new architectural patterns or conventions
 - Changing directory structure
 - Establishing new best practices
