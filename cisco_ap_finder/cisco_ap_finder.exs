@@ -9,7 +9,7 @@ defmodule CiscoAPFinder do
   """
 
   defmodule AP do
-    defstruct [:hostname, :mac_address, :interface, :switch, :vlan, :model]
+    defstruct [:hostname, :mac_address, :interface, :switch, :vlan, :model, :description]
   end
 
   def run do
@@ -31,8 +31,9 @@ defmodule CiscoAPFinder do
     username = get_input("Enter username: ")
     password = get_password("Enter password: ")
 
-    # Get switches filename
-    switches_file = get_input("Enter switches file (one IP per line): ")
+    # Get switches filename (defaults to switches.txt)
+    switches_file = get_input("Enter switches file (one IP per line) [switches.txt]: ")
+    switches_file = if switches_file == "", do: "switches.txt", else: switches_file
 
     # Read switches list
     switches = read_switches_file(switches_file)
@@ -340,9 +341,12 @@ defmodule CiscoAPFinder do
         interface_models = parse_power_inline_output(power_output)
         log(log_file, "Found #{length(interface_models)} powered local port(s): #{inspect(interface_models)}")
 
+        # Map of normalized port -> full interface description (best-effort).
+        descriptions = get_descriptions(conn, channel, switch, log_file, errors_agent)
+
         # For each interface, get MAC address and VLAN, then check if it's a Cisco device
         Enum.map(interface_models, fn {interface, model} ->
-          get_ap_details(conn, channel, interface, model, switch, log_file, errors_agent)
+          get_ap_details(conn, channel, interface, model, switch, descriptions, log_file, errors_agent)
         end)
         |> Enum.reject(&is_nil/1)
 
@@ -352,7 +356,23 @@ defmodule CiscoAPFinder do
     end
   end
 
-  defp get_ap_details(conn, channel, interface, model, switch, log_file, errors_agent) do
+  defp get_descriptions(conn, channel, switch, log_file, errors_agent) do
+    log(log_file, "Executing: show interfaces description")
+
+    case execute_command(conn, channel, "show interfaces description") do
+      {:ok, output} ->
+        log(log_file, "--- BEGIN show interfaces description ---")
+        log(log_file, output)
+        log(log_file, "--- END show interfaces description ---")
+        parse_interface_descriptions(output)
+
+      {:error, reason} ->
+        log_error(log_file, errors_agent, "[#{switch}] Failed to get interface descriptions: #{inspect(reason)}")
+        %{}
+    end
+  end
+
+  defp get_ap_details(conn, channel, interface, model, switch, descriptions, log_file, errors_agent) do
     log(log_file, "Processing interface #{interface} (model: #{model})")
     log(log_file, "Executing: show mac address-table interface #{interface}")
 
@@ -376,6 +396,10 @@ defmodule CiscoAPFinder do
               hostname = get_hostname_from_cdp(conn, channel, interface, log_file, errors_agent, switch)
               log(log_file, "Hostname from CDP: #{hostname || "Unknown"}")
 
+              # Look up the interface description (best-effort) by normalized port name.
+              description = Map.get(descriptions, normalize_port(interface), "N/A")
+              log(log_file, "Interface description: #{description}")
+
               log(log_file, "✓ Adding AP: #{hostname || "Unknown"} (#{mac_address}) on #{interface}")
 
               %AP{
@@ -384,7 +408,8 @@ defmodule CiscoAPFinder do
                 interface: interface,
                 switch: switch,
                 vlan: vlan,
-                model: model
+                model: model,
+                description: description
               }
             else
               log(log_file, "✗ MAC #{mac_address} does NOT match Cisco OUI - skipping")
@@ -438,6 +463,76 @@ defmodule CiscoAPFinder do
       end)
 
     result || :error
+  end
+
+  # Parse "show interfaces description" into %{normalized_port => description}.
+  #
+  #   Interface              Status         Protocol Description
+  #   Gi1/0/1                up             up       AP-Floor1
+  #   Gi1/0/2                admin down     down
+  defp parse_interface_descriptions(output) do
+    output
+    |> String.split("\n")
+    |> Enum.reduce(%{}, fn line, acc ->
+      case parse_description_line(line) do
+        {port, description} -> Map.put(acc, port, description)
+        nil -> acc
+      end
+    end)
+  end
+
+  defp parse_description_line(line) do
+    trimmed = String.trim(line)
+    parts = String.split(trimmed, ~r/\s+/)
+    port_raw = List.first(parts)
+
+    if port_line?(port_raw) do
+      # Layout: Interface  Status  Protocol  Description...
+      # Status is a single token ("up"/"down"/"deleted") except for the two-token
+      # "admin down". Protocol is always a single token, so the description starts
+      # right after it. Computing the protocol index positionally (rather than by
+      # matching "up"/"down") avoids mistaking the second word of "admin down" for
+      # the protocol column.
+      proto_idx = if Enum.at(parts, 1) == "admin", do: 3, else: 2
+      description = parts |> Enum.drop(proto_idx + 1) |> Enum.join(" ") |> blank_to_na()
+      {normalize_port(port_raw), description}
+    end
+  end
+
+  defp blank_to_na(nil), do: "N/A"
+  defp blank_to_na(""), do: "N/A"
+  defp blank_to_na(value), do: value
+
+  # A data row starts with an interface name such as Gi1/0/1, Te1/1/1, Po1.
+  # The header ("Interface") and separators ("----") have no leading-letters+digit.
+  defp port_line?(nil), do: false
+  defp port_line?(token), do: Regex.match?(~r/^[A-Za-z]{2,}\d/, token)
+
+  # Interface name normalization (mirrors down_port_finder/endpoint_finder).
+  @port_prefix_map [
+    {~r/^(?:gigabitethernet|gig|gi)/i, "gi"},
+    {~r/^(?:tengigabitethernet|tengige|tengig|ten|te)/i, "te"},
+    {~r/^(?:twentyfivegige?|twentyfivegig|twe|tw)/i, "tw"},
+    {~r/^(?:fortygigabitethernet|fortygig|fo)/i, "fo"},
+    {~r/^(?:hundredgige?|hundredgig|hu)/i, "hu"},
+    {~r/^(?:fastethernet|fas|fa)/i, "fa"},
+    {~r/^(?:ethernet|eth|et)/i, "et"},
+    {~r/^(?:port-channel|po)/i, "po"},
+    {~r/^(?:appgigabitethernet|app|ap)/i, "ap"},
+    {~r/^(?:vlan|vl)/i, "vl"}
+  ]
+
+  defp normalize_port(raw) do
+    cleaned = raw |> String.trim() |> String.replace(~r/\s+/, "")
+    lowered = String.downcase(cleaned)
+
+    Enum.reduce_while(@port_prefix_map, lowered, fn {regex, prefix}, acc ->
+      if Regex.match?(regex, acc) do
+        {:halt, Regex.replace(regex, acc, prefix)}
+      else
+        {:cont, acc}
+      end
+    end)
   end
 
   defp get_hostname_from_cdp(conn, channel, interface, log_file, errors_agent, switch) do
@@ -636,11 +731,11 @@ defmodule CiscoAPFinder do
     # Create CSV content
     csv_lines = [
       # Header
-      "Switch,Interface,VLAN,Model,Hostname,MAC Address"
+      "Switch,Interface,Description,VLAN,Model,Hostname,MAC Address"
       |
       # Data rows
       Enum.map(aps, fn ap ->
-        [ap.switch, ap.interface, to_string(ap.vlan), ap.model, ap.hostname, ap.mac_address]
+        [ap.switch, ap.interface, ap.description, to_string(ap.vlan), ap.model, ap.hostname, ap.mac_address]
         |> Enum.map(&escape_csv_field/1)
         |> Enum.join(",")
       end)
