@@ -38,6 +38,19 @@ elixir qsfp_sfp_adapter_finder.exs
 
 See [`qsfp_sfp_adapter_finder/README.md`](qsfp_sfp_adapter_finder/README.md) for detailed documentation.
 
+---
+
+## Down Port Finder
+
+Finds Cisco switch ports assigned to VLANs 161-164 that are not connected or disabled. Parses `show interfaces status` for each port's access VLAN and link state and `show interfaces description` for the full description, then reports matching ports (status `notconnect`, `disabled`, or `err-disabled`) to `down_ports.csv`.
+
+```bash
+cd down_port_finder
+elixir down_port_finder.exs
+```
+
+See [`down_port_finder/README.md`](down_port_finder/README.md) for detailed documentation.
+
 ### License
 
 See LICENSE file for details.
