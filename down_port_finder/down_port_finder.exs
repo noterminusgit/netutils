@@ -42,8 +42,13 @@ defmodule DownPortFinder do
     run_time = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
 
     # Single run log: logs/<ISO8601-seconds>-<script name>.log
+    # The ":" and "." characters in an ISO 8601 timestamp are illegal in
+    # filenames on some platforms (e.g. Windows/NTFS), which makes the write
+    # fail with an "enoent"/no-such-file error, so replace them with "-" for the
+    # filename (matching the convention used by the other scripts in this repo).
+    file_timestamp = String.replace(run_time, ~r/[:.]/, "-")
     File.mkdir_p!("logs")
-    log_file = Path.join("logs", "#{run_time}-down_port_finder.log")
+    log_file = Path.join("logs", "#{file_timestamp}-down_port_finder.log")
     log(log_file, "=== Down Port Finder run started ===")
     IO.puts("Logging to: #{log_file}\n")
 

@@ -113,8 +113,11 @@ Each run writes one log file named with the run's ISO 8601 start time (to the
 second) followed by the script name, e.g.:
 
 ```text
-logs/2026-06-28T21:56:30Z-down_port_finder.log
+logs/2026-06-28T22-14-34Z-down_port_finder.log
 ```
+
+The `:` and `.` characters from the ISO 8601 timestamp are replaced with `-`
+because they are not valid in filenames on every platform (e.g. Windows).
 
 The log captures connection events, every command issued, the raw command output,
 and any errors encountered per switch.
