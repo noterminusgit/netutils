@@ -14,6 +14,19 @@ See [`cisco_ap_finder/README.md`](cisco_ap_finder/README.md) for detailed docume
 
 ---
 
+## AP Mismatch Finder
+
+Discovers Cisco Access Points the same way as the Cisco AP Finder, then diffs each AP's interface description against its CDP hostname and outputs only the ports where the two values don't match. Useful for auditing that port descriptions stay in sync with the APs plugged into them. Outputs to `output/<timestamp>-ap_mismatches.csv`.
+
+```bash
+cd ap_mismatch_finder
+elixir ap_mismatch_finder.exs
+```
+
+See [`ap_mismatch_finder/README.md`](ap_mismatch_finder/README.md) for detailed documentation.
+
+---
+
 ## Endpoint Finder
 
 Discovers all endpoints (non-switch devices) on Cisco edge switches. Uses CDP to identify and exclude inter-switch uplinks/downlinks, then collects MAC address, LLDP name, switch hostname, switch IP, port, VLAN, and in/out traffic for each remaining endpoint. Also outputs a separate CSV of CDP neighbors with their IPs.
